@@ -63,6 +63,10 @@ generation facility.
 	make_dem.csh W E S N [mode]
 Place the file dem.grd in the /topo directory. 
 
+
+add: ulimit -s unlimited to .bashrc
+
+
 4) EXAMPLE RUNS
 
 There are complete examples for each data type at the following web site:
