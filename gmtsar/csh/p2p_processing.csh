@@ -13,8 +13,8 @@
     echo "Example: p2p_processing.csh ALOS IMG-HH-ALPSRP055750660-H1.0__A IMG-HH-ALPSRP049040660-H1.0__A [config.alos.txt]"
     echo ""
     echo "    Put the data and orbit files in the raw folder, put DEM in the topo folder"
-    echo "    The SAT needs to be specified, choices with in ERS, ENVI, ALOS, ALOS_SLC, ALOS2, ALOS2_SCAN, ALOS4"
-    echo "    S1_STRIP, S1_TOPS, ENVI_SLC, CSK_RAW, CSK_SLC, CSG, TSX, RS2, GF3, LT1"
+    echo "    The SAT needs to be specified, choices with in ERS, ENVI, ALOS, ALOS_SLC, ALOS2, ALOS2_SCAN"
+    echo "    S1_STRIP, S1_TOPS, ENVI_SLC, CSK_RAW, CSK_SLC, CSG, TSX, RS2, GF3, LT1, DJ1"
     echo ""
     echo "    Make sure the files from the same date have the same stem, e.g. aaaa.tif aaaa.xml aaaa.cos aaaa.EOF, etc"
     echo ""
@@ -154,7 +154,7 @@
     echo "PREPROCESS - START"
     echo ""
     echo "Working on images $master $aligned ..."
-    if ($SAT == "ALOS" || $SAT == "ALOS2" || $SAT == "ALOS_SLC" || $SAT == "ALOS2_SCAN" || $SAT == "ALOS4") then
+    if ($SAT == "ALOS" || $SAT == "ALOS2" || $SAT == "ALOS_SLC" || $SAT == "ALOS2_SCAN") then
       if(! -f raw/$master ) then
         echo " no file  raw/"$master
         exit
@@ -198,7 +198,7 @@
         echo " no file  raw/"$aligned.baq
         exit
       endif
-    else if ($SAT == "S1_STRIP" || $SAT == "S1_TOPS") then
+    else if ($SAT == "S1_STRIP" || $SAT == "S1_TOPS"|| $SAT == "DJ1") then
       if(! -f raw/$master.xml ) then
         echo " no file  raw/"$master".xml"
         exit
@@ -305,6 +305,7 @@
 #
 #  Start preprocessing
 #
+    echo -e "\033[1;31m1. 数据准备阶段 ......  \033[0m"
     if ($SAT == "S1_TOPS") then
       set master = `echo $master | awk '{ print "S1_"substr($1,16,8)"_"substr($1,25,6)"_F"substr($1,7,1)}'`
       set aligned = `echo $aligned | awk '{ print "S1_"substr($1,16,8)"_"substr($1,25,6)"_F"substr($1,7,1)}'`
@@ -324,10 +325,9 @@
       set aligned = `echo $3`
     endif
     cd raw
-    
+    echo -e "\033[1;31m -------- \033[0m"
     echo "pre_proc.csh $SAT $master $aligned $commandline"
     pre_proc.csh $SAT $master $aligned $commandline   
-        
     cd ..
     echo " "
     echo "PREPROCESS - END"
@@ -405,10 +405,10 @@
 # 
     echo " "
     echo "ALIGN.CSH - START"
-    echo ""
+    echo -e "\033[1;31m2. 数据配准阶段 ......  \033[0m"
     cd SLC
     if ($SAT != "S1_TOPS") then
-      if ($SAT == "ERS" || $SAT == "ENVI" || $SAT == "ALOS" || $SAT == "CSK_RAW") then
+      if ($SAT == "ERS" || $SAT == "ENVI" || $SAT == "ALOS" || $SAT == "CSK_RAW" ) then
         if ($skip_master == 0 || $skip_master == 2) then
           cp ../raw/$master.PRM .
           ln -s ../raw/$master.raw . 
@@ -438,7 +438,7 @@
         ln -s ../raw/$aligned.LED .
       endif
 
-      if ($SAT == "ERS" || $SAT == "ENVI" || $SAT == "ALOS" || $SAT == "CSK_RAW") then
+      if ($SAT == "ERS" || $SAT == "ENVI" || $SAT == "ALOS" || $SAT == "CSK_RAW" ) then
         if ($skip_master == 0 || $skip_master == 2) then
           sarp.csh $master.PRM
         endif
@@ -511,10 +511,22 @@
         else if ($SAT == "ERS" || $SAT == "ENVI" || $SAT == "ALOS" || $SAT == "CSK_RAW" || $SAT == "LT1" ||  $SAT == "ALOS_SLC") then
           xcorr $master.PRM $aligned.PRM -xsearch 128 -ysearch 128 -nx 20 -ny 50
           fitoffset.csh 3 3 freq_xcorr.dat 18 >> $aligned.PRM
+        else if ($SAT == "DJ1") then  
+          echo "Coreg DJ1 ......."
+          xcorr $master.PRM $aligned.PRM -xsearch 256 -ysearch 256 -nx 4 -ny 4 -noshift
+          filter_offset.csh freq_xcorr.dat  output.txt
+          mv output.txt freq_xcorr.dat
+          fitoffset.csh 1 1 freq_xcorr.dat 40 >> $aligned.PRM
+        echo -e "\033[1;31m精细配准\033[0m"
+          xcorr $master.PRM $aligned.PRM -xsearch 128 -ysearch 128 -nx 20 -ny 20 -noshift
+          filter_offset.csh freq_xcorr.dat  output.txt
+          mv output.txt freq_xcorr.dat
+          fitoffset.csh 3 3 freq_xcorr.dat 40 >> $aligned.PRM          
         else
-          xcorr $master.PRM $aligned.PRM -xsearch 256 -ysearch 256 -nx 20 -ny 50
-          fitoffset.csh 3 3 freq_xcorr.dat 18 >> $aligned.PRM
+          xcorr $master.PRM $aligned.PRM -noshift -xsearch 128 -ysearch 128 -nx 20 -ny 50
+          fitoffset.csh 2 2  freq_xcorr.dat 18 >> $aligned.PRM
         endif
+        echo -e "\033[1;31mSlave 重采样\033[0m"
         resamp $master.PRM $aligned.PRM $aligned.PRMresamp $aligned.SLCresamp 4
         rm $aligned.SLC
         mv $aligned.SLCresamp $aligned.SLC
@@ -753,7 +765,8 @@
         cd ..
         cd topo
         ln -s ../SLC/amp-$master.grd . 
-        offset_topo amp-$master.grd topo_ra.grd 0 0 7 topo_shift.grd 
+        #org: # offset_topo amp-$master.grd topo_ra.grd 0 0 7 topo_shift.grd 
+        offset_topo amp-$master.grd topo_ra.grd 0 0 128 topo_shift.grd
         cd ..
         echo "OFFSET_TOPO - END"
       else if ($shift_topo == 0) then 

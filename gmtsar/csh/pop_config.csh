@@ -9,16 +9,13 @@ if ($#argv != 1) then
   echo ""
   echo "Usage: pop_config.csh SAT"
   echo ""
-  echo "       SAT can be ERS, ENVI, ALOS, ALOS_SLC, ALOS2, ALOS2_SCAN ALOS4"
+  echo "       SAT can be ERS, ENVI, ALOS, ALOS_SLC, ALOS2, ALOS2_SCAN DJ1"
   echo "       S1_STRIP, S1_TOPS, CSK_RAW, CSK_SLC, CSG, TSX, RS2, GF3, LT1"
   echo ""
   exit 1
 endif
 
 set SAT = `echo $1`
-if ($SAT == "ALOS4") then
-  set SAT = "ALOS2"
-endif
 
 echo "#"
 echo "# This is an example configuration file for p2p_processing.csh"
@@ -72,7 +69,7 @@ if ($SAT == "S1_TOPS") then
   echo "spec_mode = 1"
 endif
 
-if ($SAT == "ALOS_SLC || $SAT == "ALOS4"") then
+if ($SAT == "ALOS_SLC") then
   echo "# SLC scale factor to convert float to int "
   echo "SLC_factor = 0.02"
   echo ""
@@ -144,7 +141,7 @@ if ($SAT == "ALOS2_SCAN") then
 else if ($SAT == "RS2" || $SAT == "TSX") then
   echo "filter_wavelength = 100"
 else
-  echo "filter_wavelength = 200"
+  echo "filter_wavelength = 100"
 endif
 echo ""
 echo "# decimation of images "
