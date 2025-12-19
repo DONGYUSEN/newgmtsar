@@ -15,7 +15,7 @@ LIB_C		= aastretch.c acpatch.c calc_dop.c conv2d.c do_freq_xcorr.c \
 		  rmpatch.c rng_cmp.c rng_ref.c set_prm_defaults.c shift.c \
 		  sio_struct.c siocomplex.c spline.c trans_col.c utils.c utils_complex.c \
 		  write_orb.c sbas_utils.c stringutils.c update_PRM_sub.c rng_filter.c \
-		  lib_strfuncs.c
+		  lib_strfuncs.c xcorr2.c
 
 LIB_O		= $(LIB_C:.c=.o)
 LIB		= libgmtsar.$(LIBEXT)
@@ -34,7 +34,7 @@ PROGS_C		= bperp.c calc_dop_orb.c conv.c esarp.c offset_topo.c phase2topo.c \
 		  phasediff.c phasefilt.c resamp.c xcorr.c extend_orbit.c update_PRM.c get_PRM.c \
 		  SAT_llt2rat.c SAT_look.c SAT_baseline.c make_gaussian_filter.c sbas.c \
           nearest_grid.c fitoffset.c solid_tide.c p_scatter.c split_spectrum.c cut_slc.c \
-          split_aperture.c phasediff_get_topo_phase.c geocode_slc.c
+          split_aperture.c phasediff_get_topo_phase.c geocode_slc.c xcorr2.c
 
 PROGS_O         = $(PROGS_C:.c=.o)
 PROGS           = $(PROGS_C:.c=)
@@ -68,4 +68,4 @@ clean:
 #-------------------------------------------------------------------------------
 
 $(PROGS):	$(PROGS_O) $(LIB)
-		$(CC) $(LDFLAGS) $@.o $(GMTSAR) $(GMT_LIB) $(LALIBS) $(LIBS)  -L$(TIFF_LIB) -ltiff -lm -o $@
+		$(CC) $(LDFLAGS) -fopenmp $@.o $(GMTSAR) $(GMT_LIB) $(LALIBS) $(LIBS)  -L$(TIFF_LIB) -ltiff -lm -lfftw3f -o $@
