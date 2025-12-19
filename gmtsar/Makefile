@@ -15,7 +15,7 @@ LIB_C		= aastretch.c acpatch.c calc_dop.c conv2d.c do_freq_xcorr.c \
 		  rmpatch.c rng_cmp.c rng_ref.c set_prm_defaults.c shift.c \
 		  sio_struct.c siocomplex.c spline.c trans_col.c utils.c utils_complex.c \
 		  write_orb.c sbas_utils.c stringutils.c update_PRM_sub.c rng_filter.c \
-		  lib_strfuncs.c xcorr2.c
+		  lib_strfuncs.c
 
 LIB_O		= $(LIB_C:.c=.o)
 LIB		= libgmtsar.$(LIBEXT)
@@ -68,4 +68,4 @@ clean:
 #-------------------------------------------------------------------------------
 
 $(PROGS):	$(PROGS_O) $(LIB)
-		$(CC) $(LDFLAGS) -fopenmp $@.o $(GMTSAR) $(GMT_LIB) $(LALIBS) $(LIBS)  -L$(TIFF_LIB) -ltiff -lm -lfftw3f -o $@
+		$(CC) $(LDFLAGS) -fopenmp $@.o $(GMTSAR) $(GMT_LIB) $(LALIBS) $(LIBS)  -L$(TIFF_LIB) -ltiff -lm -lfftw3f -lfftw3f_threads -o $@
