@@ -279,7 +279,7 @@ echo $commandline
     echo ""
     echo " Pre-Process ENVISAT SLC data - END"
     echo ""  
-  else if ($SAT == "ALOS_SLC" || $SAT == "ALOS2" || $SAT == "ALOS2_SCAN" || $SAT == "ALOS4") then
+  else if ($SAT == "ALOS_SLC" || $SAT == "ALOS2" || $SAT == "ALOS2_SCAN") then
     echo ""
     echo " Pre-Process ALOS SLC data - START"
     echo ""
@@ -303,13 +303,6 @@ echo $commandline
       endif
       if ($skip_master == 0 || $skip_master == 1) then
         ALOS_pre_process_SLC IMG-$aligned LED-$aligned_led $commandline -ALOS1
-      endif
-    else if ($SAT == "ALOS4") then
-      if ($skip_master == 0 || $skip_master == 2) then
-        ALOS_pre_process_SLC IMG-$master LED-$master_led $commandline -ALOS4 -rbias 2.5
-      endif
-      if ($skip_master == 0 || $skip_master == 1) then
-        ALOS_pre_process_SLC IMG-$aligned LED-$aligned_led $commandline -ALOS4 -rbias 2.5
       endif
     else
       if ($skip_master == 0 || $skip_master == 2) then
@@ -422,9 +415,9 @@ echo $commandline
     echo ""
     echo " Pre-Process CSK Raw data - END"
     echo ""
-  else if ($SAT == "CSK_SLC" || $SAT == "CSG" || $SAT == "TSX" || $SAT == "S1_STRIP" || $SAT == "RS2" || $SAT == "GF3" || $SAT == "LT1") then
+  else if ($SAT == "CSK_SLC" || $SAT == "CSG" || $SAT == "TSX" || $SAT == "S1_STRIP" || $SAT == "RS2" || $SAT == "GF3" || $SAT == "LT1" || $SAT == "DJ1") then
     echo ""
-    echo " Pre-Process CSK/TSX/RS2/S1_STRIP/GF3/LT1 SLC data - START"
+    echo "Pre-Process CSK/TSX/RS2/S1_STRIP/GF3/LT1/DJ1 SLC data - START"
     echo ""
     if ($SAT == "CSK_SLC") then     
       if ($skip_master == 0 || $skip_master == 2) then
@@ -481,6 +474,13 @@ echo $commandline
       if ($skip_master == 0 || $skip_master == 1) then
         make_slc_gf3 $aligned.xml $aligned.tiff $aligned
       endif
+    else if ($SAT == "DJ1") then
+      if ($skip_master == 0 || $skip_master == 2) then
+        make_slc_dj1 $master.xml $master.tiff $master
+      endif
+      if ($skip_master == 0 || $skip_master == 1) then
+        make_slc_dj1 $aligned.xml $aligned.tiff $aligned
+      endif      
     else if ($SAT == "LT1") then
       if ($skip_master == 0 || $skip_master == 2) then
         if ($SLC_factor == 0) then
@@ -497,7 +497,9 @@ echo $commandline
         endif
       endif
     else 
+      echo "in s1a import"
       if ($skip_master == 0 || $skip_master == 2) then
+        echo $master.xml $master.tiff
         make_slc_s1a $master.xml $master.tiff $master
         mv $master.LED save-$master.LED
         extend_orbit save-$master.LED $master.LED 3
