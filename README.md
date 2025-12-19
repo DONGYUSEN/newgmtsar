@@ -64,7 +64,13 @@ generation facility.
 Place the file dem.grd in the /topo directory. 
 
 
-add: ulimit -s unlimited to .bashrc
+X1: add  "ulimit -s unlimited" to .bashrc
+    add  "export OMP_NUM_THREADS=6" to .bashrc
+X2:
+sudo apt-get install csh subversion autoconf libtiff5-dev libhdf5-dev wget
+sudo apt-get install liblapack-dev libgmt-dev gmt-dcw gmt-gshhg gmt
+sudo apt-get install gfortran g++
+sudo apt-get install libfftw3f-dev 
 
 
 4) EXAMPLE RUNS
