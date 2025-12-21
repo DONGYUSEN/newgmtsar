@@ -26,7 +26,8 @@ endif
 if ( -f ~/.quiet ) then
     set V = ""
 else
-	set V = "-V"
+	# set V = "-V" #原来的，一堆输出，太烦。
+    set V = ""
 endif
 #
 # set tension
@@ -64,7 +65,7 @@ if($rng_samp_rate > 0 && $rng_samp_rate < 24000000) then
   set rng = 1
 else if($rng_samp_rate >= 24000000 && $rng_samp_rate < 72000000 || $SC == 7 ) then
   set rng = 2
-else if($rng_samp_rate >= 72000000) then
+else if($rng_samp_rate >= 72000000) then #这个地方挺讨厌，降低了天仪系列的精度
   set rng = 4
 else
    echo "range sampling rate out of bounds"
@@ -73,7 +74,7 @@ endif
 echo " range decimation is: " $rng
 
 // if($SC == 10 || $SC == 11) then  --- old
-if($SC == 11 || $SC == 12) then
+if($SC == 10 || $SC == 11 || $SC == 12) the #SAT_llt2rat使用高精度的地形转换，会拖累哨兵数据处理速率。
      gmt grd2xyz --FORMAT_FLOAT_OUT=%lf $2 -s | SAT_llt2rat $1 1 -bod  > trans.dat
   else
      gmt grd2xyz --FORMAT_FLOAT_OUT=%lf $2 -s | SAT_llt2rat $1 0 -bod  > trans.dat
