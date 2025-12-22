@@ -75,7 +75,7 @@ echo " range decimation is: " $rng
 
 // if($SC == 10 || $SC == 11) then  --- old
 if($SC == 10 || $SC == 11 || $SC == 12) the #SAT_llt2rat使用高精度的地形转换，会拖累哨兵数据处理速率。
-     gmt grd2xyz --FORMAT_FLOAT_OUT=%lf $2 -s | SAT_llt2rat $1 1 -bod  > trans.dat
+     gmt grd2xyz --FORMAT_FLOAT_OUT=%lf $2 -s | SAT_llt2rat2 $1 1 -bod  trans.dat # 用自己的算法
   else
      gmt grd2xyz --FORMAT_FLOAT_OUT=%lf $2 -s | SAT_llt2rat $1 0 -bod  > trans.dat
 endif
