@@ -1,4 +1,4 @@
-/*	$Id: xcorr.c 73 2013-04-19 17:59:45Z pwessel $	*/
+/*	$Id: xcorr2.c 73 2013-04-19 17:59:45Z pwessel $	*/
 /***************************************************************************/
 /* xcorr does a 2-D cross correlation on complex or real images            */
 /* either using a time convolution or wavenumber multiplication.           */
@@ -24,7 +24,7 @@
  *              - add range interpolation                                  *
  *              - eliminated obsolete options and code                     *
  *              - renamed xcorr_utils.c print_results.c                    *
- *              - further testing....                                      *
+ * 122225       希望提升速度，但是效果不佳。                                    *
  ***************************************************************************/
 /*-------------------------------------------------------*/
 // 必须先包含系统头文件，再包含GMTSAR相关头文件
