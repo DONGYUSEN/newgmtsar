@@ -512,12 +512,7 @@
           xcorr $master.PRM $aligned.PRM -xsearch 128 -ysearch 128 -nx 20 -ny 50
           fitoffset.csh 3 3 freq_xcorr.dat 18 >> $aligned.PRM
         else if ($SAT == "DJ1") then  
-          echo "Coreg DJ1 ......."
-          xcorr $master.PRM $aligned.PRM -xsearch 256 -ysearch 256 -nx 4 -ny 4 -noshift
-          filter_offset.csh freq_xcorr.dat  output.txt
-          mv output.txt freq_xcorr.dat
-          fitoffset.csh 1 1 freq_xcorr.dat 40 >> $aligned.PRM
-        echo -e "\033[1;31m精细配准\033[0m"
+          echo "配准电建一号数据......."
           xcorr $master.PRM $aligned.PRM -xsearch 128 -ysearch 128 -nx 20 -ny 20 -noshift
           filter_offset.csh freq_xcorr.dat  output.txt
           mv output.txt freq_xcorr.dat
