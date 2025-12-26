@@ -575,6 +575,10 @@ echo $commandline
       update_PRM $aligned.PRM fd1 $v1
       update_PRM $aligned.PRM fdd1 $v2
       update_PRM $aligned.PRM fddd1 $v3
+
+      ## only for test 2025.12.25
+      update_PRM $master.PRM SC_identity 14
+      update_PRM $aligned.PRM SC_identity 14
     endif
 
     echo ""
