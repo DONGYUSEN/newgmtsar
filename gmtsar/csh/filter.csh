@@ -50,6 +50,7 @@ errormessage:
   if( $PRF < 1000 ) then
      set az_lks = 1
   endif
+  set SC = `grep SC_identity $1 | awk '{print $3}'`
 #
 # look for range sampling rate
 #
@@ -58,10 +59,13 @@ errormessage:
 # set the range spacing in units of image range pixel size
 #
   if ($?rng_samp_rate) then
-    if ($rng_samp_rate > 110000000) then 
+    if($SC == 14) then
+      set dec_rng = 2
+      set filter1 = $sharedir/filters/gauss15x5
+    else if ($rng_samp_rate > 110000000) then 
       set dec_rng = 4
       set filter1 = $sharedir/filters/gauss15x5
-    else if ($rng_samp_rate < 110000000 && $rng_samp_rate > 20000000) then
+    else if ($rng_samp_rate < 110000000 && $rng_samp_rate > 20000000 ) then
       set dec_rng = 2
       set filter1 = $sharedir/filters/gauss15x5
 #
