@@ -9,7 +9,7 @@ if ($#argv != 1) then
   echo ""
   echo "Usage: pop_config.csh SAT"
   echo ""
-  echo "       SAT can be ERS, ENVI, ALOS, ALOS_SLC, ALOS2, ALOS2_SCAN DJ1"
+  echo "       SAT can be ERS, ENVI, ALOS, ALOS_SLC, ALOS2, ALOS2_SCAN, DJ1"
   echo "       S1_STRIP, S1_TOPS, CSK_RAW, CSK_SLC, CSG, TSX, RS2, GF3, LT1"
   echo ""
   exit 1
@@ -73,7 +73,7 @@ if ($SAT == "ALOS_SLC") then
   echo "# SLC scale factor to convert float to int "
   echo "SLC_factor = 0.02"
   echo ""
-else if ($SAT == "ALOS2_SCAN" || $SAT == "ALOS2") then
+else if ($SAT == "ALOS2_SCAN" || $SAT == "ALOS2" || $SAT == "DJ1") then
   echo "# SLC scale factor to convert float to int"
   echo "SLC_factor = 2.0"
   echo ""
@@ -155,6 +155,8 @@ if ($SAT == "RS2" || $SAT == "TSX") then
   echo "dec_factor = 1 "
 else if ($SAT == "ALOS2_SCAN") then
   echo "dec_factor = 4 "
+else if ($SAT == "DJ1") then
+  echo "dec_factor = 2 "
 else
   echo "dec_factor = 2 "
 endif
@@ -186,7 +188,11 @@ echo "#   - snaphu.csh                    #"
 echo "#####################################"
 echo "# correlation threshold for snaphu.csh (0~1)"
 echo "# set it to be 0 to skip unwrapping."
-echo "threshold_snaphu = 0"
+if ($SAT == "DJ1") then
+  echo "threshold_snaphu = .10 "
+else
+  echo "threshold_snaphu = 0 "
+endif
 echo ""
 echo "# interpolate masked or low coherence pixels with their nearest neighbors, 1 means interpolate, "
 echo "# others or blank means using original phase, see snaphu.csh and snaphu_interp.csh for details"
