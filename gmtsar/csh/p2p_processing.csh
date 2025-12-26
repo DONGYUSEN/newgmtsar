@@ -8,18 +8,17 @@
 
   if ($#argv != 3 && $#argv != 4) then
     echo ""
-    echo "Usage: p2p_processing.csh SAT master_image aligned_image [configuration_file] "
+    echo "用法: p2p_processing.csh SAT master_image aligned_image [configuration_file] "
     echo ""
-    echo "Example: p2p_processing.csh ALOS IMG-HH-ALPSRP055750660-H1.0__A IMG-HH-ALPSRP049040660-H1.0__A [config.alos.txt]"
+    echo "例子: p2p_processing.csh DJ1 20241110 20241121 [config.DJ1.txt]"
     echo ""
-    echo "    Put the data and orbit files in the raw folder, put DEM in the topo folder"
-    echo "    The SAT needs to be specified, choices with in ERS, ENVI, ALOS, ALOS_SLC, ALOS2, ALOS2_SCAN"
-    echo "    S1_STRIP, S1_TOPS, ENVI_SLC, CSK_RAW, CSK_SLC, CSG, TSX, RS2, GF3, LT1, DJ1"
+    echo "    将数据和轨道文件放入原始文件夹，将DEM文件放入topo文件夹"
+    echo "    需明确SAT：  ERS, ENVI, ALOS, ALOS_SLC, ALOS2, ALOS2_SCAN，S1_STRIP"
+    echo "    S1_TOPS, ENVI_SLC, CSK_RAW, CSK_SLC, CSG, TSX, RS2, GF3, LT1, DJ1"
     echo ""
-    echo "    Make sure the files from the same date have the same stem, e.g. aaaa.tif aaaa.xml aaaa.cos aaaa.EOF, etc"
+    echo "    确保同日期的文件具有相同的文件名前缀, e.g. aaaa.tif aaaa.xml aaaa.cos aaaa.EOF, etc"
     echo ""
-    echo "    If the configuration file is left blank, the program will generate one "
-    echo "    with default parameters "
+    echo "    若配置文件留空，程序将自动生成默认参数配置文件 "
     echo ""
     exit 1
   endif
@@ -29,7 +28,7 @@
   if ($#argv == 4) then 
     if(! -f $4 ) then
       echo " no configure file: "$4
-      echo " Leave it blank to generate config file with default values."
+      echo "留空以生成默认值配置文件."
       exit 1
     endif
   endif
@@ -63,7 +62,7 @@
   end
   if ("x$s_stages" != "x") then
     echo ""
-    echo "Skipping stage $s_stages ..."
+    echo "跳过 stage $s_stages ..."
   endif
   set skip_master = `grep skip_master $conf | awk '{print $3}'`
   if ($skip_master == "") set skip_master = 0
@@ -71,7 +70,7 @@
     set skip_4 = 1
     set skip_5 = 1
     set skip_6 = 1
-    echo "Skipping stage 4,5,6 as skip_master is set to 2 ..."
+    echo "跳过 stage 4,5,6 as skip_master is set to 2 ..."
   endif
   set num_patches = `grep num_patches $conf | awk '{print $3}'`
   set near_range = `grep near_range $conf | awk '{print $3}'`
@@ -101,7 +100,7 @@
   set spec_mode = `grep spec_mode $conf | awk '{print $3}'`
   #  set filter = 200
   #  echo " "
-  #  echo "WARNING filter wavelength was not set in config.txt file"
+  #  echo "警告：   filter wavelength was not set in config.txt file"
   #  echo "        please specify wavelength (e.g., filter_wavelength = 200)"
   #  echo "        remove filter1 = gauss_alos_200m"
   #endif
@@ -151,9 +150,9 @@
 #
   if ($stage == 1 && $skip_1 == 0) then
     echo ""
-    echo "PREPROCESS - START"
+    echo "开始处理："
     echo ""
-    echo "Working on images $master $aligned ..."
+    echo "数据处理： $master $aligned ..."
     if ($SAT == "ALOS" || $SAT == "ALOS2" || $SAT == "ALOS_SLC" || $SAT == "ALOS2_SCAN") then
       if(! -f raw/$master ) then
         echo " no file  raw/"$master
@@ -305,7 +304,7 @@
 #
 #  Start preprocessing
 #
-    echo -e "\033[1;31m1. 数据准备阶段 ......  \033[0m"
+    echo "1. 数据准备阶段 ......  "
     if ($SAT == "S1_TOPS") then
       set master = `echo $master | awk '{ print "S1_"substr($1,16,8)"_"substr($1,25,6)"_F"substr($1,7,1)}'`
       set aligned = `echo $aligned | awk '{ print "S1_"substr($1,16,8)"_"substr($1,25,6)"_F"substr($1,7,1)}'`
@@ -325,12 +324,12 @@
       set aligned = `echo $3`
     endif
     cd raw
-    echo -e "\033[1;31m -------- \033[0m"
+    echo " -------- "
     echo "pre_proc.csh $SAT $master $aligned $commandline"
     pre_proc.csh $SAT $master $aligned $commandline   
     cd ..
     echo " "
-    echo "PREPROCESS - END"
+    echo "处理完成......."
     echo ""
   endif
  
@@ -404,8 +403,8 @@
 # focus and align SLC images 
 # 
     echo " "
-    echo "ALIGN.CSH - START"
-    echo -e "\033[1;31m2. 数据配准阶段 ......  \033[0m"
+    # echo "ALIGN.CSH - START"
+    echo "2. 数据配准阶段 ......  "
     cd SLC
     if ($SAT != "S1_TOPS") then
       if ($SAT == "ERS" || $SAT == "ENVI" || $SAT == "ALOS" || $SAT == "CSK_RAW" ) then
@@ -521,7 +520,7 @@
           xcorr $master.PRM $aligned.PRM -noshift -xsearch 128 -ysearch 128 -nx 20 -ny 50
           fitoffset.csh 2 2  freq_xcorr.dat 18 >> $aligned.PRM
         endif
-        echo -e "\033[1;31mSlave 重采样\033[0m"
+        echo "Slave 重采样............"
         resamp $master.PRM $aligned.PRM $aligned.PRMresamp $aligned.SLCresamp 4
         rm $aligned.SLC
         mv $aligned.SLCresamp $aligned.SLC
@@ -995,8 +994,10 @@
         gmt grdtrend  unwrap.grd -N2 -Tphase_trend.grd
         gmt grdmath unwrap.grd phase_trend.grd SUB = unwrap_rm_trend.grd
         cp unwrap_rm_trend.grd unwrap.grd
-        echo "在原始相位中去除相位趋势......"
+        echo "在原始相位中去除相位趋势，并重新缠绕回-pi到+pi......"
         gmt grdmath phase.grd phase_trend.grd SUB = phase_rm_trend.grd
+        gmt math phase_rm_trend 2 PI MUL MOD = wrapped_phase_0_2pi.grd -fg
+        mv wrapped_phase_0_2pi.grd phase.grd
       endif
 
 
