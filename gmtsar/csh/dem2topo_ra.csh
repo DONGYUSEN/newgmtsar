@@ -63,10 +63,12 @@ echo "Working over $region ... "
 #
 if($rng_samp_rate > 0 && $rng_samp_rate < 24000000) then
   set rng = 1
-else if($rng_samp_rate >= 24000000 && $rng_samp_rate < 72000000 || $SC == 7 ) then
+else if($rng_samp_rate >= 24000000 && $rng_samp_rate < 72000000 || $SC == 7) then
   set rng = 2
 else if($rng_samp_rate >= 72000000) then #这个地方挺讨厌，降低了天仪系列的精度
   set rng = 4
+else if($SC == 14) then
+  set rng = 2
 else
    echo "range sampling rate out of bounds"
    exit 0
