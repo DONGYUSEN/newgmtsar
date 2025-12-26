@@ -224,7 +224,7 @@ int pop_prm(struct PRM *prm, tree *xml_tree, char *file_name) {
 	//printf("Reading prm ... rangesamplingrate\n");
 	search_tree(xml_tree, "/product/generalAnnotation/productInformation/rangeSamplingRate/", tmp_c, 1, 0, 1);
 	prm->fs = str2double(tmp_c); // rng_samp_rate
-	prm->SC_identity = 10;       /* (1)-ERS1 (2)-ERS2 (3)-Radarsat (4)-Envisat (5)-ALOS
+	prm->SC_identity = 14;       /* (1)-ERS1 (2)-ERS2 (3)-Radarsat (4)-Envisat (5)-ALOS
 	                                (6)-  (7)-TSX (8)-CSK (9)-RS2 (10) Sentinel-1a*/
 	//printf("Reading prm ...radarfrequency\n");
 	search_tree(xml_tree, "/product/generalAnnotation/productInformation/radarFrequency/", tmp_c, 1, 0, 1);
@@ -327,3 +327,4 @@ int pop_prm(struct PRM *prm, tree *xml_tree, char *file_name) {
 	printf("PRM set for Image File...\n");
 	return (1);
 }
+
