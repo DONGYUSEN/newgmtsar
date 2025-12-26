@@ -979,7 +979,7 @@
       endif
 #
       echo " "
-      echo "SNAPHU.CSH - START"
+      echo "相位解缠开始：SNAPHU.CSH - START"
       echo "threshold_snaphu: $threshold_snaphu"
 #
       if ($near_interp == 1) then
@@ -988,13 +988,31 @@
         snaphu.csh $threshold_snaphu $defomax
       endif
 #
-      echo "SNAPHU.CSH - END"
+      echo "相位解缠结束：SNAPHU.CSH - END"
+      
+      if ($SAT == "DJ1" || $SAT == "LT1" ||  $SAT == "GF3" ) then 
+        echo "在解缠后相位中去除 DJ1、LT1、GF3 平行干涉条纹......"
+        gmt grdtrend  unwrap.grd -N2 -Tphase_trend.grd
+        gmt grdmath unwrap.grd phase_trend.grd SUB = unwrap_rm_trend.grd
+        cp unwrap_rm_trend.grd unwrap.grd
+        echo "在原始相位中去除相位趋势......"
+        gmt grdmath phase.grd phase_trend.grd SUB = phase_rm_trend.grd
+      endif
+
+
+
       cd ../..
     else 
       echo ""
       echo "SKIP UNWRAP PHASE"
     endif
   endif
+
+# 去除DJ1等的平行条纹：
+
+
+
+
 
 ###########################
 # 6 - start from geocode  #
