@@ -7,7 +7,7 @@
 /***************************************************************************
  * Modification history:                                                   *
  *                                                                         *
- * DATE                                                                    *
+ * 注意：prm->pulsedur、chirp_slope 和look_dir的值！！！！                                                                    *
  *                                                                         *
  ***************************************************************************/
 
@@ -346,7 +346,7 @@ int pop_prm(struct PRM *prm, tree *xml_tree, char *file_name) {
 
 	// add by dong 2025.12.27
 	// prm->pulsedur = prm->num_rng_bins / prm->fs;
-	prm->pulsedur = 0.000026800000; //from new xml file, we find this value, and hope it keep stable.
+	prm->pulsedur = 0.000026800000; //从老版本的xml文件中读出，一般不会发生变化，需要对新卫星进行确认！
 	search_tree(xml_tree,
 	            "/product/imageAnnotation/processingInformation/swathProcParamsList/"
 	            "swathProcParams/rangeProcessing/lookBandwidth/",
@@ -356,3 +356,4 @@ int pop_prm(struct PRM *prm, tree *xml_tree, char *file_name) {
 	printf("PRM set for Image File...\n");
 	return (1);
 }
+
