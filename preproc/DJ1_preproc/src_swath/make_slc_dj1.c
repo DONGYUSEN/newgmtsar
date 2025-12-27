@@ -1,7 +1,7 @@
 /***************************************************************************
- * Creator:  Xiaohua(Eric) XU                                              *
- *           (Scripps Institution of Oceanography)                         *
- * Date   :  04/06/2015                                                    *
+ * Creator:  Yusen Dong                                              *
+ *           (中国地质大学（武汉）)                         *
+ * Date   :  27/12/2025                                                    *
  ***************************************************************************/
 
 /***************************************************************************
@@ -26,10 +26,10 @@ int pop_led(tree *, state_vector *);
 int write_orb(state_vector *sv, FILE *fp, int);
 int write_slc(TIFF *, FILE *);
 
-char *USAGE = "\n\nUsage: make_slc_dj1 name_of_xml_file name_of_tiff_file name_output\n"
-              "\nExample: make_slc_dj1 bc3-sm-slc-vv-20240520t030855-006595-000107-0019c3-01.xml "
+char *USAGE = "\n\n用法: make_slc_dj1 name_of_xml_file name_of_tiff_file name_output\n"
+              "\n例子: make_slc_dj1 bc3-sm-slc-vv-20240520t030855-006595-000107-0019c3-01.xml "
               "bc3-sm-slc-vv-20240520t030855-006595-000107-0019c3-01.tiff 20240520\n"
-              "\nOutput: 20240520.SLC 20240520.PRM 20240520.LED\n";
+              "\n输出: 20240520.SLC 20240520.PRM 20240520.LED\n";
 
 int main(int argc, char **argv) {
 
@@ -43,7 +43,7 @@ int main(int argc, char **argv) {
 
 	if (argc < 4)
 		die(USAGE, "");
-
+	printf("开始读取天仪系列/电建一号卫星数据.......\n");
 	// find the number of lines and the maximum line length of the xml file
 	if ((XML_FILE = fopen(argv[1], "r")) == NULL)
 		die("Couldn't open xml file: \n", argv[1]);
@@ -56,13 +56,13 @@ int main(int argc, char **argv) {
 			nc = 0;
 		}
 	}
-	fprintf(stderr,"%d %d \n",n,nlmx);
+	// fprintf(stderr,"%d %d \n",n,nlmx);
 	xml_tree = (struct tree *)malloc(5 * n * sizeof(struct tree));
 	fclose(XML_FILE);
 
 	// generate the xml tree
 	if ((XML_FILE = fopen(argv[1], "r")) == NULL)
-		die("Couldn't open xml file: \n", argv[1]);
+		die("无法打开文件 Couldn't open xml file: \n", argv[1]);
 	get_tree(XML_FILE, xml_tree, 1);
 	fclose(XML_FILE);
 
@@ -77,7 +77,7 @@ int main(int argc, char **argv) {
 	strcpy(tmp_str, argv[3]);
 	strcat(tmp_str, ".PRM");
 	if ((OUTPUT_PRM = fopen(tmp_str, "w")) == NULL)
-		die("Couldn't open prm file: \n", tmp_str);
+		die("无法打开文件 Couldn't open prm file: \n", tmp_str);
 	put_sio_struct(prm, OUTPUT_PRM);
 	fclose(OUTPUT_PRM);
 
@@ -87,22 +87,22 @@ int main(int argc, char **argv) {
 
 	strcpy(tmp_str, argv[3]);
 	strcat(tmp_str, ".LED");
-	printf("Writing  orbit ... %s \n", tmp_str);
+	printf("写入轨道信息 Writing  orbit ... %s \n", tmp_str);
 	
 	if ((OUTPUT_LED = fopen(tmp_str, "w")) == NULL)
-		die("Couldn't open led file: \n", tmp_str);
+		die("无法打开文件 Couldn't open led file: \n", tmp_str);
 	write_orb(sv, OUTPUT_LED, n);
 	fclose(OUTPUT_LED);
 	//printf("Finished Writing  orbit ... \n");
 	// generate the SLC file
 	TIFFSetWarningHandler(NULL);
 	if ((TIFF_FILE = TIFFOpen(argv[2], "r")) == NULL)
-		die("Couldn't open tiff file: \n", argv[2]);
+		die("无法打开文件 Couldn't open tiff file: \n", argv[2]);
 
 	strcpy(tmp_str, argv[3]);
 	strcat(tmp_str, ".SLC");
 	if ((OUTPUT_SLC = fopen(tmp_str, "wb")) == NULL)
-		die("Couldn't open slc file: \n", tmp_str);
+		die("无法打开文件 Couldn't open slc file: \n", tmp_str);
 	write_slc(TIFF_FILE, OUTPUT_SLC);
 
 	TIFFClose(TIFF_FILE);
@@ -125,7 +125,7 @@ int write_slc(TIFF *tif, FILE *slc) {
 
 	buf = (uint16 *)_TIFFmalloc(TIFFScanlineSize(tif));
 	tmp = (short *)malloc(width * 2 * sizeof(short));
-	printf("Writing SLC..Image Size: %d X %d...\n", width, height);
+	printf("写入数据文件 Writing SLC..Image Size: %d X %d...\n", width, height);
 
 	TIFFGetField(tif, TIFFTAG_SAMPLESPERPIXEL, &nsamples);
 	for (s = 0; s < nsamples; s++) {
@@ -270,7 +270,14 @@ int pop_prm(struct PRM *prm, tree *xml_tree, char *file_name) {
 
 	search_tree(xml_tree, "/product/generalAnnotation/productInformation/pass/", tmp_c, 1, 0, 1);
 	strasign(prm->orbdir, tmp_c, 0, 0);
-	strasign(prm->lookdir, "R", 0, 0);
+	search_tree(xml_tree, "/product/imageAnnotation/imageInformation/look_side/", tmp_c, 1, 0, 1);
+	//printf("look_side: %s", tmp_c);
+        if (strcmp(tmp_c, "left") == 0) {
+          strasign(prm->lookdir, "L", 0, 0);
+        } else {
+          strasign(prm->lookdir, "R", 0, 0);
+        }
+	
 
 	strcpy(tmp_c, file_name);
 	strcat(tmp_c, ".raw");
@@ -287,8 +294,10 @@ int pop_prm(struct PRM *prm, tree *xml_tree, char *file_name) {
 	prm->SLC_scale = 1.0;
 	//printf("Reading prm ...startTime\n");
 	search_tree(xml_tree, "/product/adsHeader/startTime/", tmp_c, 2, 0, 1);
+	//printf("start Time: %s\n",tmp_c);
 	prm->clock_start = str2double(tmp_c);
 	search_tree(xml_tree, "/product/adsHeader/startTime/", tmp_c, 1, 0, 1);
+	//printf("start Time2 : %s\n",tmp_c);
 	tmp_c[4] = '\0';
 	prm->SC_clock_start = prm->clock_start + 1000. * str2double(tmp_c);
 
@@ -307,8 +316,19 @@ int pop_prm(struct PRM *prm, tree *xml_tree, char *file_name) {
 	strasign(prm->srm, "0", 0, 0); // scnd_rng_mig
 	prm->az_res = 0.0;
 	// prm.antenna_side = -1;
-	prm->fdd1 = 0.0;
-	prm->fddd1 = 0.0;
+	
+	// 读取dopplerCentroid数据：
+	search_tree(xml_tree, "/product/dopplerCentroid/dcEstimateList/dcEstimate/dataDcPolynomial/", tmp_c, 1, 4, 1);
+	char t_p1[64], t_p2[64], t_p3[64];
+	sscanf(tmp_c, "%63s %63s %63s", t_p1, t_p2, t_p3);
+	//tmp_c[8] = '\0';
+	//tmp_d = str2double(tmp_c);
+	//printf("DC: %63s %63s %63s\n", t_p1, t_p2, t_p3);
+	prm->fd1 = str2double(t_p1);
+	prm->fdd1 = str2double(t_p2);
+	prm->fddd1 = str2double(t_p3);
+	//prm->fdd1 = 0.0;
+	//prm->fddd1 = 0.0;
 
 	search_tree(xml_tree, "/product/imageAnnotation/imageInformation/numberOfLines/", tmp_c, 1, 0, 1);
 	tmp_i = (int)str2double(tmp_c);
@@ -323,9 +343,9 @@ int pop_prm(struct PRM *prm, tree *xml_tree, char *file_name) {
 	prm->num_patches = 1;
 	prm->num_rng_bins = prm->bytes_per_line / 4;
 	prm->chirp_ext = 0;
-	
+
 	// add by dong 2025.12.27
-	# prm->pulsedur = prm->num_rng_bins / prm->fs;
+	// prm->pulsedur = prm->num_rng_bins / prm->fs;
 	prm->pulsedur = 0.000026800000; //from new xml file, we find this value, and hope it keep stable.
 	search_tree(xml_tree,
 	            "/product/imageAnnotation/processingInformation/swathProcParamsList/"
@@ -336,5 +356,3 @@ int pop_prm(struct PRM *prm, tree *xml_tree, char *file_name) {
 	printf("PRM set for Image File...\n");
 	return (1);
 }
-
-
