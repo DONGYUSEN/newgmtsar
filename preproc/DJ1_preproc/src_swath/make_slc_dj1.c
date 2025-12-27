@@ -323,8 +323,18 @@ int pop_prm(struct PRM *prm, tree *xml_tree, char *file_name) {
 	prm->num_patches = 1;
 	prm->num_rng_bins = prm->bytes_per_line / 4;
 	prm->chirp_ext = 0;
-
+	
+	// add by dong 2025.12.27
+	# prm->pulsedur = prm->num_rng_bins / prm->fs;
+	prm->pulsedur = 0.000026800000; //from new xml file, we find this value, and hope it keep stable.
+	search_tree(xml_tree,
+	            "/product/imageAnnotation/processingInformation/swathProcParamsList/"
+	            "swathProcParams/rangeProcessing/lookBandwidth/",
+	            tmp_c, 1, 0, 1);
+	prm->chirp_slope = str2double(tmp_c) / prm->pulsedur;
+	
 	printf("PRM set for Image File...\n");
 	return (1);
 }
+
 
