@@ -1,13 +1,13 @@
 /***************************************************************************
- * Creator:  Yusen Dong                                              *
- *           (中国地质大学（武汉）)                         *
- * Date   :  27/12/2025                                                    *
+ * Creator:  Xiaohua(Eric) XU                                              *
+ *           (Scripps Institution of Oceanography)                         *
+ * Date   :  04/06/2015                                                    *
  ***************************************************************************/
 
 /***************************************************************************
  * Modification history:                                                   *
  *                                                                         *
- * 注意：prm->pulsedur、chirp_slope 和look_dir的值！！！！                                                                    *
+ * DATE                                                                    *
  *                                                                         *
  ***************************************************************************/
 
@@ -270,13 +270,14 @@ int pop_prm(struct PRM *prm, tree *xml_tree, char *file_name) {
 
 	search_tree(xml_tree, "/product/generalAnnotation/productInformation/pass/", tmp_c, 1, 0, 1);
 	strasign(prm->orbdir, tmp_c, 0, 0);
-	search_tree(xml_tree, "/product/imageAnnotation/imageInformation/look_side/", tmp_c, 1, 0, 1);
+	/*search_tree(xml_tree, "/product/imageAnnotation/imageInformation/look_side/", tmp_c, 1, 0, 1); //no look_side after 2023
 	//printf("look_side: %s", tmp_c);
         if (strcmp(tmp_c, "left") == 0) {
           strasign(prm->lookdir, "L", 0, 0);
         } else {
           strasign(prm->lookdir, "R", 0, 0);
-        }
+        }*/
+        strasign(prm->lookdir, "L", 0, 0);
 	
 
 	strcpy(tmp_c, file_name);
@@ -346,7 +347,7 @@ int pop_prm(struct PRM *prm, tree *xml_tree, char *file_name) {
 
 	// add by dong 2025.12.27
 	// prm->pulsedur = prm->num_rng_bins / prm->fs;
-	prm->pulsedur = 0.000026800000; //从老版本的xml文件中读出，一般不会发生变化，需要对新卫星进行确认！
+	prm->pulsedur = 0.000026800000; //from new xml file, we find this value, and hope it keep stable.
 	search_tree(xml_tree,
 	            "/product/imageAnnotation/processingInformation/swathProcParamsList/"
 	            "swathProcParams/rangeProcessing/lookBandwidth/",
@@ -356,4 +357,3 @@ int pop_prm(struct PRM *prm, tree *xml_tree, char *file_name) {
 	printf("PRM set for Image File...\n");
 	return (1);
 }
-
