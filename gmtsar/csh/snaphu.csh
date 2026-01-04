@@ -23,11 +23,9 @@ errormessage:
     exit 1
   endif
 #
-if ( -f ~/.quiet ) then
-    set V = ""
-else
-	set V = "-V"
-endif
+set V = ""
+# set V = "-V"
+
 
 # prepare the files adding the correlation mask
 #

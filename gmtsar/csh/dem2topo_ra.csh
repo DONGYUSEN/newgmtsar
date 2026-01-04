@@ -3,6 +3,7 @@
 # Matt WEI Feb 1 2010
 # modified by Xiaopeng Feb 9 2010
 # modified by E. Fielding, DST, XT to add TSX data Jan 10 2014
+# modified by ysdong, 2025.12.26
 #=======================================================================
 #  script to make topography for interferograms 
 #  The USGS elevations are height above WGS84 so this is OK.
@@ -26,7 +27,7 @@ endif
 if ( -f ~/.quiet ) then
     set V = ""
 else
-	# set V = "-V" #原来的，一堆输出，太烦。
+    # set V = "-V" # old ideal
     set V = ""
 endif
 #
@@ -63,20 +64,24 @@ echo "Working over $region ... "
 #
 if($rng_samp_rate > 0 && $rng_samp_rate < 24000000) then
   set rng = 1
-else if($rng_samp_rate >= 24000000 && $rng_samp_rate < 72000000 || $SC == 7) then
+else if($rng_samp_rate >= 24000000 && $rng_samp_rate < 72000000 || $SC == 7 ) then
   set rng = 2
 else if($SC == 14) then
   set rng = 2
-else if($rng_samp_rate >= 72000000) then #这个地方挺讨厌，降低了天仪系列的精度
+else if($rng_samp_rate >= 72000000) then
   set rng = 4
+
 else
-  set rng = 2
+   echo "range sampling rate out of bounds"
+   # exit 0
+   set rng = 2
 endif
 echo " range decimation is: " $rng
 
-// if($SC == 10 || $SC == 11) then  --- old
-if($SC == 11 || $SC == 12 || $SC == 14) the #SAT_llt2rat使用高精度的地形转换，会拖累哨兵数据处理速率。
-     gmt grd2xyz --FORMAT_FLOAT_OUT=%lf $2 -s | SAT_llt2rat2 $1 1 -bod  trans.dat # 用自己的算法
+
+if($SC == 11 || $SC == 12 || $SC == 14 ) then ## first modify
+     gmt grd2xyz --FORMAT_FLOAT_OUT=%lf $2 -s | SAT_llt2rat2 $1 1 -bod trans.dat  ## second modify 
+     #gmt grd2xyz --FORMAT_FLOAT_OUT=%lf $2 -s | SAT_llt2rat $1 0 -bod  > trans.dat
   else
      gmt grd2xyz --FORMAT_FLOAT_OUT=%lf $2 -s | SAT_llt2rat $1 0 -bod  > trans.dat
 endif
@@ -104,18 +109,35 @@ if ($PRF < 1000) then
     rm topo_ra_tmp.grd coarse.grd mean.rat
   endif
 else
-  gmt gmtconvert trans.dat -o0,1,2 -bi5d -bo3d | gmt blockmedian -R$region -I$rng/4 -bi3d -bo3d -r $V > temp.rat 
+
+  
   if ($mode == 0) then
-    gmt surface temp.rat -R$region -I$rng/4 -bi3d -T$tension -N1000 -Gpixel.grd -r -Q >& tmp
-    set RR = `grep Hint tmp | head -1 | awk '{for(i=1;i<=NF;i++) print $i}' | grep /`
-    if ("x$RR" == "x") then
-      gmt surface temp.rat -R$region -I$rng/4 -bi3d -T$tension -N1000 -Gpixel.grd -r $V
+    if($SC == 14) then # for DJ1
+      echo "                     DJ1 high resolution DEM to topo_ra.grd"
+      gmt gmtconvert trans.dat -o0,1,2 -bi5d -bo3d | gmt blockmedian -R$region -I$rng/2 -bi3d -bo3d -r $V > temp.rat 
+      gmt surface temp.rat -R$region -I$rng/2 -bi3d -T$tension -N1000 -Gpixel.grd -r -Q >& tmp
+      set RR = `grep Hint tmp | head -1 | awk '{for(i=1;i<=NF;i++) print $i}' | grep /`
+      if ("x$RR" == "x") then
+        gmt surface temp.rat -R$region -I$rng/2 -bi3d -T$tension -N1000 -Gpixel.grd -r $V
+      else
+        gmt surface temp.rat $RR -I$rng/2 -bi3d -T$tension -N1000 -Gpixel.grd -r $V
+        gmt grdcut pixel.grd -R$region -Gtmp.grd
+        mv tmp.grd pixel.grd
+      endif  
     else
-      gmt surface temp.rat $RR -I$rng/4 -bi3d -T$tension -N1000 -Gpixel.grd -r $V
-      gmt grdcut pixel.grd -R$region -Gtmp.grd
-      mv tmp.grd pixel.grd
-    endif  
+      gmt gmtconvert trans.dat -o0,1,2 -bi5d -bo3d | gmt blockmedian -R$region -I$rng/4 -bi3d -bo3d -r $V > temp.rat 
+      gmt surface temp.rat -R$region -I$rng/4 -bi3d -T$tension -N1000 -Gpixel.grd -r -Q >& tmp
+      set RR = `grep Hint tmp | head -1 | awk '{for(i=1;i<=NF;i++) print $i}' | grep /`
+      if ("x$RR" == "x") then
+        gmt surface temp.rat -R$region -I$rng/4 -bi3d -T$tension -N1000 -Gpixel.grd -r $V
+      else
+        gmt surface temp.rat $RR -I$rng/4 -bi3d -T$tension -N1000 -Gpixel.grd -r $V
+        gmt grdcut pixel.grd -R$region -Gtmp.grd
+        mv tmp.grd pixel.grd
+      endif  
+    endif
   else if ($mode == 1) then
+    gmt gmtconvert trans.dat -o0,1,2 -bi5d -bo3d | gmt blockmedian -R$region -I$rng/4 -bi3d -bo3d -r $V > temp.rat 
     set rng2 = `echo $rng | awk '{print $1*8}'`
     gmt triangulate temp.rat -R$region -I$rng/4 -bi3d -Gtopo_ra_tmp.grd -r $V
     gmt blockmean temp.rat -R$region -I$rng2/32 -bi3d -bo3d -r > mean.rat

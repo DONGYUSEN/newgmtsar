@@ -23,7 +23,7 @@ unset noclobber
     echo "       e.g. 1 for ERS ENVISAT ALOS FBD" 
     echo "            2 for ALOS FBS " 
     echo "            4 for TSX"
-    echo ""
+    echo ""     output tif at same
     echo "Example: slc2amp.csh IMG-HH-ALPSRP055750660-H1.0__A.PRM 2 amp-ALPSRP055750660-H1.0__A.grd"
     echo ""
     exit 1
@@ -34,13 +34,12 @@ unset noclobber
 #
   if ((($1 =~ *PRM*) || ($1 =~ *prm*)) && ($3 =~ *grd*)) then
     echo " range decimation is:" $2
-    # conv 4 $2 $fil1 $1 $3=bf
-    conv 2 $2 $fil1 $1 $3=bf # 修改了，dz2号rang 用2， az用2，
-    gmt grdmath $3 LOG2 = test2.grd
+    conv 2 $2 $fil1 $1 $3=bf
+    gmt grdmath $3 LOG2 100 ADD = test2.grd
     gmt grd2cpt  test2.grd  -Cgray  -Z  > test2.cpt
     set base = `echo $3 | sed 's/...$//'`   # 去掉最后3个字符
     set filename = "${base}tif"
-    #echo $filename
+    echo $filename
     gmt grdimage test2.grd -Ctest2.cpt -JX5c -A$filename
     rm test2*
   else 

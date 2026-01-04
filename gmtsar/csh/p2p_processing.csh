@@ -1,6 +1,6 @@
 #!/bin/csh -f
-#       $Id$
-#
+# $Id$
+#  modified by ysdong, 2025.12.26
 #  Xiaohua Xu, Jan, 2018
 #
 #  Automatically perform two-path processing on raw(1.0)/SLC(1.1) data
@@ -12,13 +12,14 @@
     echo ""
     echo "例子: p2p_processing.csh DJ1 20241110 20241121 [config.DJ1.txt]"
     echo ""
-    echo "    将数据和轨道文件放入原始文件夹，将DEM文件放入topo文件夹"
-    echo "    需明确SAT：  ERS, ENVI, ALOS, ALOS_SLC, ALOS2, ALOS2_SCAN，S1_STRIP"
-    echo "    S1_TOPS, ENVI_SLC, CSK_RAW, CSK_SLC, CSG, TSX, RS2, GF3, LT1, DJ1"
+    echo "    Put the data and orbit files in the raw folder, put DEM in the topo folder"
+    echo "    The SAT needs to be specified, choices with in ERS, ENVI, ALOS, ALOS_SLC, ALOS2, ALOS2_SCAN"
+    echo "    S1_STRIP, S1_TOPS, ENVI_SLC, CSK_RAW, CSK_SLC, CSG, TSX, RS2, GF3, LT1, DJ1"
     echo ""
-    echo "    确保同日期的文件具有相同的文件名前缀, e.g. aaaa.tif aaaa.xml aaaa.cos aaaa.EOF, etc"
+    echo "    Make sure the files from the same date have the same stem, e.g. aaaa.tif aaaa.xml aaaa.cos aaaa.EOF, etc"
     echo ""
-    echo "    若配置文件留空，程序将自动生成默认参数配置文件 "
+    echo "    If the configuration file is left blank, the program will generate one "
+    echo "    with default parameters "
     echo ""
     exit 1
   endif
@@ -28,7 +29,7 @@
   if ($#argv == 4) then 
     if(! -f $4 ) then
       echo " no configure file: "$4
-      echo "留空以生成默认值配置文件."
+      echo " Leave it blank to generate config file with default values."
       exit 1
     endif
   endif
@@ -36,6 +37,8 @@
 #
 #  Read parameters from the configure file
 #
+date
+set OMP_NUM_THREADS = 12
   set SAT = `echo $1`
   if ($#argv == 4) then
     set conf = `echo $4`
@@ -62,7 +65,7 @@
   end
   if ("x$s_stages" != "x") then
     echo ""
-    echo "跳过 stage $s_stages ..."
+    echo "Skipping stage $s_stages ..."
   endif
   set skip_master = `grep skip_master $conf | awk '{print $3}'`
   if ($skip_master == "") set skip_master = 0
@@ -70,7 +73,7 @@
     set skip_4 = 1
     set skip_5 = 1
     set skip_6 = 1
-    echo "跳过 stage 4,5,6 as skip_master is set to 2 ..."
+    echo "Skipping stage 4,5,6 as skip_master is set to 2 ..."
   endif
   set num_patches = `grep num_patches $conf | awk '{print $3}'`
   set near_range = `grep near_range $conf | awk '{print $3}'`
@@ -100,7 +103,7 @@
   set spec_mode = `grep spec_mode $conf | awk '{print $3}'`
   #  set filter = 200
   #  echo " "
-  #  echo "警告：   filter wavelength was not set in config.txt file"
+  #  echo "WARNING filter wavelength was not set in config.txt file"
   #  echo "        please specify wavelength (e.g., filter_wavelength = 200)"
   #  echo "        remove filter1 = gauss_alos_200m"
   #endif
@@ -150,9 +153,9 @@
 #
   if ($stage == 1 && $skip_1 == 0) then
     echo ""
-    echo "开始处理："
+    echo "PREPROCESS - START"
     echo ""
-    echo "数据处理： $master $aligned ..."
+    echo "Working on images $master $aligned ..."
     if ($SAT == "ALOS" || $SAT == "ALOS2" || $SAT == "ALOS_SLC" || $SAT == "ALOS2_SCAN") then
       if(! -f raw/$master ) then
         echo " no file  raw/"$master
@@ -304,7 +307,7 @@
 #
 #  Start preprocessing
 #
-    echo "1. 数据准备阶段 ......  "
+    echo "1.                      数据准备阶段 ......  "
     if ($SAT == "S1_TOPS") then
       set master = `echo $master | awk '{ print "S1_"substr($1,16,8)"_"substr($1,25,6)"_F"substr($1,7,1)}'`
       set aligned = `echo $aligned | awk '{ print "S1_"substr($1,16,8)"_"substr($1,25,6)"_F"substr($1,7,1)}'`
@@ -324,12 +327,12 @@
       set aligned = `echo $3`
     endif
     cd raw
-    echo " -------- "
+    echo "                      -------- "
     echo "pre_proc.csh $SAT $master $aligned $commandline"
     pre_proc.csh $SAT $master $aligned $commandline   
     cd ..
     echo " "
-    echo "处理完成......."
+    echo "PREPROCESS - END"
     echo ""
   endif
  
@@ -403,8 +406,8 @@
 # focus and align SLC images 
 # 
     echo " "
-    # echo "ALIGN.CSH - START"
-    echo "2. 数据配准阶段 ......  "
+    echo "ALIGN.CSH - START"
+    echo "2.                     数据配准阶段 ......  "
     cd SLC
     if ($SAT != "S1_TOPS") then
       if ($SAT == "ERS" || $SAT == "ENVI" || $SAT == "ALOS" || $SAT == "CSK_RAW" ) then
@@ -511,16 +514,19 @@
           xcorr $master.PRM $aligned.PRM -xsearch 128 -ysearch 128 -nx 20 -ny 50
           fitoffset.csh 3 3 freq_xcorr.dat 18 >> $aligned.PRM
         else if ($SAT == "DJ1") then  
-          echo "配准电建一号数据......."
-          xcorr $master.PRM $aligned.PRM -xsearch 128 -ysearch 128 -nx 20 -ny 20 -noshift
+        echo "                     ..精细配准 DJ1            "
+          set OMP_NUM_THREADS = 12
+          xcorr2 $master.PRM $aligned.PRM -xsearch 256 -ysearch 256 -nx 16 -ny 16 -noshift
           filter_offset.csh freq_xcorr.dat  output.txt
           mv output.txt freq_xcorr.dat
+          #sed -n '10,20p' freq_xcorr.dat
           fitoffset.csh 3 3 freq_xcorr.dat 40 >> $aligned.PRM          
         else
           xcorr $master.PRM $aligned.PRM -noshift -xsearch 128 -ysearch 128 -nx 20 -ny 50
           fitoffset.csh 2 2  freq_xcorr.dat 18 >> $aligned.PRM
         endif
-        echo "Slave 重采样............"
+        echo "                     ..重采样    "
+        echo ""
         resamp $master.PRM $aligned.PRM $aligned.PRMresamp $aligned.SLCresamp 4
         rm $aligned.SLC
         mv $aligned.SLCresamp $aligned.SLC
@@ -671,6 +677,7 @@
     endif
 
     if ($region_cut != "") then
+echo "3.                     裁减一下图，减少工作量"
       echo "Cutting SLC image to $region_cut"
       if ($skip_master == 0 || $skip_master == 2) then
         cut_slc $master.PRM junk1 $region_cut
@@ -729,6 +736,7 @@
 #
     if ($topo_phase == 1) then 
       echo " "
+      echo "4.                     将DEM转换到雷达坐标（斜距 - 方位向坐标）"
       echo "DEM2TOPO_RA.CSH - START"
       echo "USER SHOULD PROVIDE DEM FILE"
       cd topo
@@ -749,6 +757,8 @@
 # 
 # shift topo_ra
 # 
+      echo "5.                     图像位置好像可以......"
+      # ysdong
       if ($shift_topo == 1) then 
         echo " "
         echo "OFFSET_TOPO - START"
@@ -756,14 +766,32 @@
         set rng_samp_rate = `grep rng_samp_rate $master.PRM | awk 'NR == 1 {printf("%d", $3)}'`
         set rng = `gmt grdinfo ../topo/topo_ra.grd | grep x_inc | awk '{print $7}'`
         slc2amp.csh $master.PRM $rng amp-$master.grd 
+        slc2amp.csh $aligned.PRM $rng amp-$aligned.grd 
+        gmt grdmath amp-$master.grd amp-$aligned.grd ADD 0.5 MUL LOG2 100 ADD  = final-amp.grd
         cd ..
         cd topo
-        ln -s ../SLC/amp-$master.grd . 
+        ln -s ../SLC/final-amp.grd . 
+        ln -s ../SLC/amp-$master.grd .
         #org: # offset_topo amp-$master.grd topo_ra.grd 0 0 7 topo_shift.grd 
-        offset_topo amp-$master.grd topo_ra.grd 0 0 128 topo_shift.grd
+        offset_topo final-amp.grd topo_ra.grd 0 0 9 topo_shift.grd
+        cd ../SLC
+        gmt grdmath amp-$master.grd amp-$aligned.grd ADD 0.5 MUL 0.5 POW LOG2 100 ADD FLIPUD = final-amp.grd # rebuild by ysdong
         cd ..
         echo "OFFSET_TOPO - END"
       else if ($shift_topo == 0) then 
+        cd SLC 
+        set rng_samp_rate = `grep rng_samp_rate $master.PRM | awk 'NR == 1 {printf("%d", $3)}'`
+        set rng = `gmt grdinfo ../topo/topo_ra.grd | grep x_inc | awk '{print $7}'`
+        slc2amp.csh $master.PRM $rng amp-$master.grd 
+        slc2amp.csh $aligned.PRM $rng amp-$aligned.grd 
+        gmt grdmath amp-$master.grd amp-$aligned.grd ADD 0.5 MUL 0.5 POW LOG2 100 ADD FLIPUD = final-amp.grd # by ysdong add flipup 20251227
+        rm amp-$aligned.grd
+        cd ..
+        cd topo
+        ln -s ../SLC/amp-$master.grd . 
+        ln -s ../SLC/final-amp.grd . 
+        #org: # offset_topo amp-$master.grd topo_ra.grd 0 0 7 topo_shift.grd 
+        cd ..
         echo "NO TOPO_RA SHIFT "
       else 
         echo "Wrong paramter: shift_topo "$shift_topo
@@ -772,6 +800,7 @@
 
     else if ($topo_phase == 0) then 
       echo "NO TOPO_RA IS SUBSTRACTED"
+      
     else 
       echo "Wrong paramter: topo_phase "$topo_phase
       exit 1
@@ -805,6 +834,7 @@
 # 
 # make and filter interferograms
 # 
+    echo "6.                     开始干涉处理和滤波处理！"
     echo " "
     echo "INTF.CSH, FILTER.CSH - START"
     cd intf/
@@ -818,6 +848,7 @@
     ln -s ../../SLC/$rep.SLC .
     cp ../../SLC/$ref.PRM . 
     cp ../../SLC/$rep.PRM .
+
     if($topo_phase == 1) then
       if ($shift_topo == 1) then
         ln -s ../../topo/topo_shift.grd .
@@ -836,6 +867,7 @@
     cd ../..
 
     if ($iono == 1) then
+    echo "6:                     开始干涉处理和滤波处理，同时包括大气校正"
       if (-e iono_phase ) rm -r iono_phase
       mkdir -p iono_phase
       cd iono_phase 
@@ -963,6 +995,7 @@
       set ref_id  = `grep SC_clock_start ../raw/$ref.PRM | awk '{printf("%d",int($3))}' `
       set rep_id  = `grep SC_clock_start ../raw/$rep.PRM | awk '{printf("%d",int($3))}' `
       cd $ref_id"_"$rep_id
+      echo "7.                     终于开始相位解缠了！" #一堆问题？
 #
 # landmask
 #
@@ -978,7 +1011,7 @@
       endif
 #
       echo " "
-      echo "相位解缠开始：SNAPHU.CSH - START"
+      echo "SNAPHU.CSH - START"
       echo "threshold_snaphu: $threshold_snaphu"
 #
       if ($near_interp == 1) then
@@ -987,20 +1020,25 @@
         snaphu.csh $threshold_snaphu $defomax
       endif
 #
+      #echo "SNAPHU.CSH - END"
       echo "相位解缠结束：SNAPHU.CSH - END"
       
       if ($SAT == "DJ1" || $SAT == "LT1" ||  $SAT == "GF3" ) then 
-        echo "在解缠后相位中去除 DJ1、LT1、GF3 平行干涉条纹......"
-        gmt grdtrend  unwrap.grd -N2 -Tphase_trend.grd
+        echo "测试功能：在解缠后相位中去除 DJ1、LT1、GF3 平行干涉条纹......"
+        gmt grdtrend  unwrap.grd -N3+r -Tphase_trend.grd  # N5 = a+bx+cy+dx^2+ey^2; N3 = a+bx+cy
         gmt grdmath unwrap.grd phase_trend.grd SUB = unwrap_rm_trend.grd
-        cp unwrap_rm_trend.grd unwrap.grd
-        echo "在原始相位中去除相位趋势，并重新缠绕回-pi到+pi......"
-        gmt grdmath phase.grd phase_trend.grd SUB = phase_rm_trend.grd
-        gmt math phase_rm_trend 2 PI MUL MOD = wrapped_phase_0_2pi.grd -fg
-        mv wrapped_phase_0_2pi.grd phase.grd
+        cp unwrap.grd unwrap.org.grd
+        mv unwrap_rm_trend.grd unwrap.grd
+        echo "测试功能：在原始相位中去除相位趋势......，当前没有干活"
+        #gmt grdmath phase.grd phase_trend.grd SUB = phase_rm_trend.grd
+        #gmt grdmath phase_rm_trend 2 PI MUL MOD = wrapped_phase_0_2pi.grd -fg
+        #mv phase.grd phase.org.grd
+        #mv wrapped_phase_0_2pi.grd phase.grd
+        #gmt grdmath phasefilt.grd phase_trend.grd SUB = phasefilt_rm_trend.grd
+        #gmt grdmath phasefilt_rm_trend.grd 2 PI MUL MOD = wrapped_phase_0_2pi.grd -fg
+        #mv phasefilt.grd phasefilt.org.grd
+        #mv wrapped_phase_0_2pi.grd phasefilt.grd
       endif
-
-
 
       cd ../..
     else 
@@ -1009,18 +1047,13 @@
     endif
   endif
 
-# 去除DJ1等的平行条纹：
-
-
-
-
-
 ###########################
 # 6 - start from geocode  #
 ###########################
 #
   if ($stage <= 6 && $skip_6 == 0) then
     if ($threshold_geocode != 0 ) then
+      echo "8.                     地理编码，成图！"
       cd intf
       set ref_id  = `grep SC_clock_start ../raw/$ref.PRM | awk '{printf("%d",int($3))}' `
       set rep_id  = `grep SC_clock_start ../raw/$rep.PRM | awk '{printf("%d",int($3))}' `
@@ -1048,7 +1081,7 @@
   endif
 #
 # end  
-  
+  date
   
   
   

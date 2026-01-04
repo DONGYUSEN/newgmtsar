@@ -30,16 +30,18 @@ echo $DPI
 gmt set COLOR_MODEL = hsv
 gmt set PAPER_MEDIA = tabloid
 #
-gmt grdgradient $1.grd -Ggrad.grd $V -Nt0.7 -A60 
+#gmt grdgradient $1.grd -Ggrad.grd $V -Nt0.7 -A60 
 if ($#argv == 3) then
-  gmt grdimage $1.grd -Igrad.grd -C$2 $3 -Jx1id -P -Y2i -X2i -Q $V > $1.ps 
+  #gmt grdimage $1.grd -Igrad.grd -C$2 $3 -Jx1id -P -Y2i -X2i -Q $V > $1.ps 
+  gmt grdimage $1.grd -C$2 $3 -Jx1id -P -Y2i -X2i -Q $V > $1.ps 
 else if ($#argv == 2) then
-  gmt grdimage $1.grd -Igrad.grd -C$2 -Jx1id -P -Y2i -X2i -Q $V > $1.ps
+  #gmt grdimage $1.grd -Igrad.grd -C$2 -Jx1id -P -Y2i -X2i  -Q $V > $1.ps
+  gmt grdimage $1.grd  -C$2 -Jx1id -P -Y2i -X2i  -Q $V > $1.ps
 endif
 #
 #   now make the geotiff 
 #
 echo "Make $1.tiff"
-gmt psconvert $1.ps -W+g+t"$1" -E$DPI -P $VS
+gmt psconvert $1.ps -W+g+t"$1" -E$DPI -P $VS -A
 rm -f $1.ps grad.grd
 #

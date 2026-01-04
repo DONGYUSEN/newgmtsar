@@ -1,5 +1,4 @@
-#!/usr/bin/python
-
+#!/home/ysdong/miniconda3/bin/python
 import subprocess
 import os.path
 import numpy as np

@@ -51,6 +51,9 @@ errormessage:
      set az_lks = 1
   endif
   set SC = `grep SC_identity $1 | awk '{print $3}'`
+  
+  set master  = `echo $1 | sed 's/\.PRM$//'`
+  set aligned = `echo $2 | sed 's/\.PRM$//'`
 #
 # look for range sampling rate
 #
@@ -60,9 +63,11 @@ errormessage:
 #
   if ($?rng_samp_rate) then
     if($SC == 14) then
-      set dec_rng = 2
-      set filter1 = $sharedir/filters/gauss15x5
-    else if ($rng_samp_rate > 110000000) then 
+      set dec_rng = 1
+      set dec = 2
+      set az_lks = 2
+      set filter1 = $sharedir/filters/gauss5x5
+    else if ($rng_samp_rate > 110000000) then
       set dec_rng = 4
       set filter1 = $sharedir/filters/gauss15x5
     else if ($rng_samp_rate < 110000000 && $rng_samp_rate > 20000000 ) then
@@ -74,7 +79,7 @@ errormessage:
       if($az_lks == 1) then
         set filter1 = $sharedir/filters/gauss5x5
       endif
-    else  
+    else
       set dec_rng = 1
       set filter1 = $sharedir/filters/gauss15x3
     endif
@@ -118,7 +123,18 @@ errormessage:
     set jdec = `echo $5 $dec_rng | awk '{printf("%d",$1/$2)}'`
     echo "setting range_dec = $5, azimuth_dec = $6"
   endif
-  echo "$filter2 $idec $jdec ($az_lks $dec_rng)" 
+  #echo "$filter2 $idec $jdec ($az_lks $dec_rng)" 
+
+
+# by ysdong@cug to improve the resolution of DJ1
+    if($SC == 14) then
+      set dec_rng = 1
+      set az_lks = 1
+      set idec = 2
+      set jdec = 2
+    endif
+
+    echo "Refine: $filter2,  dec_rng = $dec_rng, az_lks = $az_lks, idec = $idec, jdec = $jdec." 
 #
 # filter the two amplitude images
 #
@@ -168,6 +184,21 @@ rm real_tmp.grd imag_tmp.grd
   gmt grdimage display_amp.grd -Cdisplay_amp.cpt $scale -Bxaf+lRange -Byaf+lAzimuth -BWSen -X1.3i -Y3i -P -K > display_amp.ps
   gmt psscale -Rdisplay_amp.grd -J -DJTC+w5i/0.2i+h+ef -Cdisplay_amp.cpt -Bx0+l"Amplitude (histogram equalized)" -O >> display_amp.ps
   gmt psconvert -Tf -P -A -Z display_amp.ps
+
+# 直接从SLC生成的SLC数据，求平均，不滤波，然后放在这里。 ysdong
+  ln -s ../../SLC/final-amp.grd .
+  set AMAX2 = `gmt grdinfo -L2 final-amp.grd | grep stdev | awk '{ print 3*$5 }'`
+  set tmp_c1 = `gmt grdinfo final-amp.grd -T+a`
+  set tmp_zmin = `echo $tmp_c1 | awk -F'[-T/]' '{print $3}'`
+  set tmp_zmax = `echo $tmp_c1 | awk -F'[-T/]' '{print $4}'`
+  gmt grd2cpt final-amp.grd -Cgray -T$tmp_zmin/$tmp_zmax/0.1 -Z -Di  > final-amp.cpt
+  # gmt grd2cpt final-amp.grd -Z -D -L0/$AMAX2 -Cgray > final-amp.cpt
+  echo "N  255   255   254" >> final-amp.cpt
+  gmt grdimage final-amp.grd -Cfinal-amp.cpt $scale -Bxaf+lRange -Byaf+lAzimuth -BWSen -X1.3i -Y3i -P -K > final-amp.ps
+  gmt psscale -Rfinal-amp.grd -J -DJTC+w5i/0.2i+h+ef -Cfinal-amp.cpt -Bx0+l"Amplitude(Log2+100,histogram equalized)" -O >> final-amp.ps
+  gmt psconvert -Tf -P -A -Z final-amp.ps
+
+
   #echo "Amplitude map: display_amp.pdf"
 #
 # form the correlation

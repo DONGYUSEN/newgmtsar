@@ -79,6 +79,8 @@ unset noclobber
   echo "correlate master and aligned to find offset parameters"
   if( $SAT == "ERS") then
     xcorr $2.PRM $3.PRM -xsearch 128 -ysearch 128 -nx 20 -ny 50
+  elseif ( $SAT == "DJ1") then
+    xcorr $2.PRM $3.PRM -xsearch 128 -ysearch 256 -nx 20 -ny 50
   else
     xcorr $2.PRM $3.PRM -xsearch 128 -ysearch 256 -nx 20 -ny 50
   endif

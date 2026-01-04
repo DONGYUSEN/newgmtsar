@@ -14,11 +14,8 @@ if ($#argv != 1) then
   echo ""
   exit 1
 endif
-
-if ( -f ~/.quiet ) then
-    set V = ""
-else
-	set V = "-V"
+set V = ""
+# set V = "-V" #FOR DEBUG
 endif
 
 echo ""
@@ -26,7 +23,7 @@ echo "MAKE LANDMASK -- START"
 echo "REQUIRE FULL RESOLUTION COASTLINE FROM GMT"
 echo ""
    
-gmt grdlandmask -Glandmask.grd `gmt grdinfo -I- dem.grd` `gmt grdinfo -I dem.grd`  $V -NNaN/1 -Df
+gmt grdlandmask -Glandmask.grd `gmt grdinfo -I- dem.grd` `gmt grdinfo -I dem.grd`  -NNaN/1 -Df
 proj_ll2ra.csh trans.dat landmask.grd landmask_ra.grd
 gmt grdsample landmask_ra.grd -Gtmp.grd -R$1 -I4/8 -nl+t0.1
 mv tmp.grd landmask_ra.grd

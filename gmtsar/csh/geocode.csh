@@ -19,11 +19,19 @@ errormessage:
     exit 1
   endif
 #
-if ( -f ~/.quiet ) then
-    set V = ""
+set V = ""
+# set V = "-V"
+
+set tmp_prm = (`ls *.PRM`)
+set first_prm = $tmp_prm[1]
+set SC = `grep SC_identity $first_prm | awk '{print $3}'`
+if ($SC == 14) then
+   set proj_par = "8"
 else
-	set V = "-V"
+   set proj_par = ""
 endif
+
+echo $proj_par
 
 #   first mask the phase and phase gradient using the correlation
 #
@@ -89,18 +97,22 @@ endif
 #
 #  now reproject the phase to lon/lat space
 #
-echo "geocode.csh"
+echo "将结果投影到经纬度坐标下，geocode.csh"
 echo "project correlation, phase, unwrapped and amplitude back to lon lat coordinates"
 set maker = $0:t
 set today = `date`
 set remarked = `echo by $USER on $today with $maker`
 echo remarked is $remarked
 
- proj_ra2ll.csh trans.dat corr.grd        corr_ll.grd           ; gmt grdedit -D//"dimensionless"/1///"$PWD:t geocoded correlation"/"$remarked"      corr_ll.grd
-#proj_ra2ll.csh trans.dat phase.grd       phase_ll.grd          ; gmt grdedit -D//"radians"/1///"$PWD:t wrapped phase"/"$remarked"                   phase_ll.grd
- proj_ra2ll.csh trans.dat phasefilt.grd   phasefilt_ll.grd      ; gmt grdedit -D//"radians"/1///"$PWD:t wrapped phase after filtering"/"$remarked"   phasefilt_ll.grd
-proj_ra2ll.csh trans.dat phase_mask.grd  phase_mask_ll.grd     ; gmt grdedit -D//"radians"/1///"$PWD:t wrapped phase after masking"/"$remarked"     phase_mask_ll.grd
- proj_ra2ll.csh trans.dat display_amp.grd display_amp_ll.grd    ; gmt grdedit -D//"dimensionless"/1///"PWD:t amplitude"/"$remarked"                  display_amp_ll.grd
+ proj_ra2ll.csh trans.dat corr.grd        corr_ll.grd  $proj_par         ; gmt grdedit -D//"dimensionless"/1///"$PWD:t geocoded correlation"/"$remarked"      corr_ll.grd
+ proj_ra2ll.csh trans.dat phase.grd       phase_ll.grd $proj_par         ; gmt grdedit -D//"radians"/1///"$PWD:t wrapped phase"/"$remarked"                   phase_ll.grd
+ proj_ra2ll.csh trans.dat phasefilt.grd   phasefilt_ll.grd $proj_par     ; gmt grdedit -D//"radians"/1///"$PWD:t wrapped phase after filtering"/"$remarked"   phasefilt_ll.grd
+ proj_ra2ll.csh trans.dat phase_mask.grd  phase_mask_ll.grd $proj_par    ; gmt grdedit -D//"radians"/1///"$PWD:t wrapped phase after masking"/"$remarked"     phase_mask_ll.grd
+ proj_ra2ll.csh trans.dat display_amp.grd display_amp_ll.grd $proj_par   ; gmt grdedit -D//"dimensionless"/1///"PWD:t amplitude"/"$remarked"                  display_amp_ll.grd
+# project the amp data by ysdong@cug
+ proj_ra2ll.csh trans.dat final-amp.grd final-amp_ll.grd $proj_par       ; gmt grdedit -D//"dimensionless"/1///"PWD:t amplitude"/"$remarked"  final-amp_ll.grd
+ grd2geotiff.csh final-amp_ll final-amp.cpt
+ grd2geotiff.csh phasefilt_mask_ll phase.cpt 
 if (-e xphase_mask.grd) then
   proj_ra2ll.csh trans.dat xphase_mask.grd xphase_mask_ll.grd  ; gmt grdedit -D//"radians"/1///"$PWD:t xphase"/"$remarked"                            xphase_mask_ll.grd
   proj_ra2ll.csh trans.dat yphase_mask.grd yphase_mask_ll.grd  ; gmt grdedit -D//"radians"/1///"$PWD:t yphase"/"$remarked"                            yphase_mask_ll.grd
@@ -117,9 +129,10 @@ endif
 #
 #   now image for google earth
 #
-echo "geocode.csh"
+echo "生成kml文件，geocode.csh"
 echo "make the KML files for Google Earth"
 grd2kml.csh display_amp_ll display_amp.cpt
+grd2kml.csh final-amp_ll final-amp.cpt
 grd2kml.csh corr_ll corr.cpt
 grd2kml.csh phase_mask_ll phase.cpt
 grd2kml.csh phasefilt_mask_ll phase.cpt

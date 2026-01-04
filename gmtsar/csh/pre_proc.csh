@@ -497,7 +497,7 @@ echo $commandline
         endif
       endif
     else 
-      echo "in s1a import"
+      echo "Sentinel S1 Import"
       if ($skip_master == 0 || $skip_master == 2) then
         echo $master.xml $master.tiff
         make_slc_s1a $master.xml $master.tiff $master
@@ -555,15 +555,15 @@ echo $commandline
       rm *.log
       rm *.PRM0
     endif
+    
 
-
-    if ($SAT == "DJ1") then  #因为干涉效果差，所以试一试加入dc信息，看看能否搞定！
+    if ($SAT == "DJ1") then
       echo "多普勒频率信息：dopplerCentroid"
       set temp_v = `sed -n '/<dataDcPolynomial/{p;q}' $master.xml | sed -n 's:.*>\(.*\)<.*:\1:p'`
       set v1 = `echo $temp_v | awk '{print $1}'`
       set v2 = `echo $temp_v | awk '{print $2}'`
       set v3 = `echo $temp_v | awk '{print $3}'`
-      echo "master: $v1, $v2, $v3"
+      echo "Master Dc: $v1, $v2, $v3"
       update_PRM $master.PRM fd1 $v1
       update_PRM $master.PRM fdd1 $v2
       update_PRM $master.PRM fddd1 $v3
@@ -571,16 +571,16 @@ echo $commandline
       set v1 = `echo $temp_v | awk '{print $1}'`
       set v2 = `echo $temp_v | awk '{print $2}'`
       set v3 = `echo $temp_v | awk '{print $3}'`
-      echo "slave: $v1, $v2, $v3"
+      echo "Slave Dc: $v1, $v2, $v3"
       update_PRM $aligned.PRM fd1 $v1
       update_PRM $aligned.PRM fdd1 $v2
       update_PRM $aligned.PRM fddd1 $v3
-
       ## only for test 2025.12.25
       update_PRM $master.PRM SC_identity 14
       update_PRM $aligned.PRM SC_identity 14
+      
     endif
-
+    
     echo ""
     echo " Pre-Process SLC data - END"
     echo ""
@@ -617,6 +617,8 @@ echo $commandline
         exit 1
       endif
     endif
+	
+
 
     echo ""
     echo " Pre-Process S1_TOPS data - END"

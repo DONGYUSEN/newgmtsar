@@ -24,7 +24,7 @@
   if ($#argv == 5) then
     set mode = $5
   else
-    set mode = 1
+    set mode = 3
   endif
 
 #
@@ -43,13 +43,15 @@
   else if ($mode == 2) then
     gmt grdcut @earth_relief_03s $R -Gdem_ortho.grd 
   else 
-    echo "[ERROR]:Wrong DEM mode selected."
+    gmt grdcut /home/ysdong/GMTSAR/dem/earth_relief_15s.grd $R -Gdem_ortho.grd 
   endif
 #
 # resample and remove geoid
 #
-  gmt grdsample $sharedir/geoid_egm96_icgem.grd -Rdem_ortho.grd -Ggeoid_resamp.grd -Vq
-  gmt grdmath -Vq dem_ortho.grd geoid_resamp.grd ADD = dem.grd
+  gmt grdsample $sharedir/geoid_egm96_icgem.grd -Rdem_ortho.grd -Ggeoid_resamp.grd # -Vq
+  # gmt grdmath -Vq dem_ortho.grd geoid_resamp.grd ADD = dem.grd # 原来用的加法，我试一试减法
+  
+  gmt grdmath -Vq dem_ortho.grd geoid_resamp.grd SUB = dem.grd # 确认残余干涉条纹与DEM无关。
 #
 # clean up 
 #

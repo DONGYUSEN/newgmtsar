@@ -54,8 +54,8 @@ endif
  set azi_p = $2
  set rng_p = $1
 
- ( gmt trend2d r.xyz -Fxyz -N"$rng_p"r -V >  /dev/null ) |& grep oefficients | awk -F":" '{print $NF, 0, 0, 0'} > rm.coef
- ( gmt trend2d a.xyz -Fxyz -N"$azi_p"r -V >  /dev/null ) |& grep oefficients | awk -F":" '{print $NF, 0 ,0, 0'} > am.coef
+ ( gmt trend2d r.xyz -Fxyz -N"$rng_p"r -I0.8 -V >  /dev/null ) |& grep oefficients | awk -F":" '{print $NF, 0, 0, 0'} > rm.coef
+ ( gmt trend2d a.xyz -Fxyz -N"$azi_p"r -I0.8 -V >  /dev/null ) |& grep oefficients | awk -F":" '{print $NF, 0 ,0, 0'} > am.coef
  awk '{print $1, $2, $3}' < rm.coef > tmp.coef
  mv tmp.coef rm.coef
  awk '{print $1, $2, $3}' < am.coef > tmp.coef

@@ -15,8 +15,8 @@ Usage: $(basename "$0") [OPTIONS] INPUT_DEM OUTPUT_DEM Reselution
   Reselution   输出的UTM投影DEM文件分辨率(Meter)
 
 示例：
-  $(basename "$0") dem.grd dem_utm.grd  10                      # 基础用法
-  $(basename "$0") ./data/input_dem.grd ./result/utm_dem.grd 10 # 指定路径
+  $(basename "$0") dem.grd dem_utm.grd          # 基础用法
+  $(basename "$0") ./data/input_dem.grd ./result/utm_dem.grd  # 指定路径
 
 注意：
   1. 输入文件必须存在且为有效的GMT grd格式

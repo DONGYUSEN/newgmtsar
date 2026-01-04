@@ -5,11 +5,8 @@
 #
 alias rm 'rm -f'
 unset noclobber
-if ( -f ~/.quiet ) then
-    set V = ""
-else
-	set V = "-V"
-endif
+set V = ""
+#set V = "-V"
 
 #
 #

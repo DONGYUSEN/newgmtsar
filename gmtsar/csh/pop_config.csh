@@ -9,7 +9,7 @@ if ($#argv != 1) then
   echo ""
   echo "Usage: pop_config.csh SAT"
   echo ""
-  echo "       SAT can be ERS, ENVI, ALOS, ALOS_SLC, ALOS2, ALOS2_SCAN, DJ1"
+  echo "       SAT can be ERS, ENVI, ALOS, ALOS_SLC, ALOS2, ALOS2_SCAN DJ1"
   echo "       S1_STRIP, S1_TOPS, CSK_RAW, CSK_SLC, CSG, TSX, RS2, GF3, LT1"
   echo ""
   exit 1
@@ -73,11 +73,11 @@ if ($SAT == "ALOS_SLC") then
   echo "# SLC scale factor to convert float to int "
   echo "SLC_factor = 0.02"
   echo ""
-else if ($SAT == "ALOS2_SCAN" || $SAT == "ALOS2" || $SAT == "DJ1") then
+else if ($SAT == "ALOS2_SCAN" || $SAT == "ALOS2" ) then
   echo "# SLC scale factor to convert float to int"
   echo "SLC_factor = 2.0"
   echo ""
-else if ($SAT == "CSK_SLC" || $SAT == "CSG") then
+else if ($SAT == "CSK_SLC" || $SAT == "CSG" || $SAT == "DJ1") then
   echo "# SLC scale factor to convert float to int"
   echo "SLC_factor = 1.0"
   echo ""
@@ -114,7 +114,8 @@ echo "topo_interp_mode = 0"
 echo ""
 echo "# topo_ra shift (1 -- yes; 0 -- no)"
 
-if ($SAT == "ALOS_SLC" || $SAT == "ALOS" || $SAT == "ERS") then
+# if ($SAT == "ALOS_SLC" || $SAT == "ALOS" || $SAT == "ERS"|| $SAT == "DJ1") then
+if ($SAT == "ALOS_SLC" || $SAT == "ALOS" || $SAT == "ERS" ) then
   echo "shift_topo = 1"
 else 
   echo "shift_topo = 0"
@@ -140,23 +141,23 @@ if ($SAT == "ALOS2_SCAN") then
   echo "filter_wavelength = 400"
 else if ($SAT == "RS2" || $SAT == "TSX") then
   echo "filter_wavelength = 100"
-else if ($SAT == "NISAR") then
-  echo "filter_wavelength = 160"
 else
-  echo "filter_wavelength = 200"
+  echo "filter_wavelength = 100"
 endif
 echo ""
 echo "# decimation of images "
 echo "# decimation control the size of the amplitude and phase images. It is either 1 or 2."
-echo "# Set the decimation to be 1 if you want higher resolution images (filter wavelength 80 to 160 m for NISAR)"
-echo "# Set the decimation to be 2 if you want images with smaller file size (filter wavelength >= 160 for NISAR)"
+echo "# Set the decimation to be 1 if you want higher resolution images."
+echo "# Set the decimation to be 2 if you want images with smaller file size."
 echo "# "
-if ($SAT == "RS2" || $SAT == "TSX") then
+if ($SAT == "RS2" || $SAT == "TSX" ) then
   echo "dec_factor = 1 "
 else if ($SAT == "ALOS2_SCAN") then
   echo "dec_factor = 4 "
 else if ($SAT == "DJ1") then
   echo "dec_factor = 2 "
+  #echo "range_dec = 2"
+  #echo "azimuth_dec = 2"
 else
   echo "dec_factor = 2 "
 endif
@@ -179,7 +180,6 @@ echo "iono_filt_azi = 1.0"
 echo "iono_dsamp = 1"
 echo "# "
 echo "# set the following parameter to skip ionospheric phase estimation"
-echo "# NISAR uses two frequencies not split spectrum so iono skip est = 1"
 echo "iono_skip_est = 1 "
 echo "#"
 echo "#####################################"
@@ -189,9 +189,9 @@ echo "#####################################"
 echo "# correlation threshold for snaphu.csh (0~1)"
 echo "# set it to be 0 to skip unwrapping."
 if ($SAT == "DJ1") then
-  echo "threshold_snaphu = .10 "
+  echo "threshold_snaphu = 0"
 else
-  echo "threshold_snaphu = 0 "
+  echo "threshold_snaphu = 0"
 endif
 echo ""
 echo "# interpolate masked or low coherence pixels with their nearest neighbors, 1 means interpolate, "
@@ -214,7 +214,7 @@ echo "#   parameters for geocode          #"
 echo "#   - geocode.csh                   #"
 echo "#####################################"
 echo "# correlation threshold for geocode.csh (0< threshold <=1), set 0 to skip"
-echo "threshold_geocode = .10"
+echo "threshold_geocode = .20"
 echo ""
 echo "#####################################"
 echo "#   Other parameters                #"
