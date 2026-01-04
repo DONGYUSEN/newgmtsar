@@ -7,7 +7,7 @@
 /***************************************************************************
  * Modification history:                                                   *
  *                                                                         *
- * DATE                                                                    *
+ * 04012026 ysdong@                                                        *
  *                                                                         *
  ***************************************************************************/
 
@@ -357,3 +357,4 @@ int pop_prm(struct PRM *prm, tree *xml_tree, char *file_name) {
 	printf("PRM set for Image File...\n");
 	return (1);
 }
+
