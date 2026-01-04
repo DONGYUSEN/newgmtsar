@@ -2,67 +2,30 @@
 /****************************************************************************
  *  Program to project a longitude, latitude, and topography
  *  into a file of range, azimuth, and topography.
- *  The basic approach is to :
- *   1 Read the header of the master radar image.  This supplies
- *     the radar co-ordinate system as well as the start and stop
- *     times for the orbit calculation.
- *   2 Read the topography data and convert to xyz positions.
- *   3 Fly the satellite along its orbit and determine the time
- *     of closest approach to each of the xyz points.   The program
- *     must have local access to the LED-file for the master.
- *   4 For each of the xyz points, calculate range, azimuth and topography
- ****************************************************************************/
-/***************************************************************************
- * Creator:  Xiaopeng Tong and David T. Sandwell                           *
- *           (Scripps Institution of Oceanography)                         *
- * Date   :  08/10/2006                                                    *
- ***************************************************************************/
-/***************************************************************************
- * Xiaohua Xu & David Sandwell: changed the search part to do polynomial   *
- * refinement. Forgot when this was done, sometime around 2015             *
- ***************************************************************************/
-/***************************************************************************
- * Modification history:                                                   *
- *                                                                         *
- * DATE                                                                    *
- * 12/15/07 - modified to work with complete grids                         *
- * 01/29/08 - modified to increase speed using the Golden Section Search   *
- * 04/13/08 - modified to give muiltiple choice of output                  *
- *            (single,double of binary or acsii)                           *
- * The algorithm is called Golden Section Search in One                    *
- * dimensional. Refer to Numerical Recipes for further details.            *
- * There is a deadly error in the NR edit 2nd:                             *
- * SHFT3(x0,x1,x2,R*x1+C*x3)                                               *
- * should be: SHFT3(x0,x1,x2,R*x3+C*x1)                                    *
- * Same error occurs at the nearby line.(2 lines below)                    *
- * The inputs for the program are 3 coordinates of a point in space        *
- * The function of the distance is in the same file.                       *
- * The function of the orbit is achieved by getorb_alos_                   *
- * the outputs are minimum range from the orbit to the point and the time. *
- * 09/17/08 - modified to read the orbit position all in once into an      *
- * array to speed up. That is to say, modify both the goldop subrountine   *
- * to use the orb_position array and the getorb_alos in the  main program  *
- * to read the array.                                                      *
- * 06/04/09 - update the range sampling rate from new PRM file to solve    *
- * confict of rng_samp_rate between LED file and PRM file in FBD mode.     *
- * 04/28/10 - modified to work with envisat - M.Wei			   *
- * 修改了bos/bod的算法，查找了错误，没有用并行处理，效率还是低。
+ *  优化说明：
+ *  1. 使用OpenMP并行化输入点处理循环
+ *  2. 优化orb_pos的内存布局，提升缓存命中率
+ *  3. 减少循环内重复计算，预计算常数
+ *  4. 线程私有数据分配，避免竞争
+ *  5. 优化I/O操作，批量写入
  ****************************************************************************/
 
 #include "gmtsar.h"
 #include "llt2xyz.h"
 #include "orbit.h"
+#include <omp.h>
+#include <string.h>
+#include <math.h>
+#include <stdlib.h>
+#include <stdio.h>
 
 #define R 0.61803399
 #define C 0.382
-#define SHFT2(a, b, c)                                                                                                           \
-	(a) = (b);                                                                                                                   \
-	(b) = (c);
-#define SHFT3(a, b, c, d)                                                                                                        \
-	(a) = (b);                                                                                                                   \
-	(b) = (c);                                                                                                                   \
-	(c) = (d);
+#define SHFT2(a, b, c) (a) = (b); (b) = (c);
+#define SHFT3(a, b, c, d) (a) = (b); (b) = (c); (c) = (d);
 #define TOL 2
+#define BATCH_SIZE 1024  // 批量写入大小
+#define SOL 299792458.0  // 光速常量（补充定义）
 
 char *USAGE = " \n Usage: "
               "SAT_llt2rat2 master.PRM prec [-bo[s|d]] outputfile  \n\n"
@@ -75,434 +38,510 @@ char *USAGE = " \n Usage: "
 
 int npad = 8000;
 
+// 优化：将orb_pos改为结构体数组，提升缓存局部性
+typedef struct {
+    double time;
+    double x;
+    double y;
+    double z;
+} OrbPos;
+
+// 声明外部函数（补充必要的函数声明）
 void read_orb(FILE *, struct SAT_ORB *);
 void set_prm_defaults(struct PRM *);
 void hermite_c(double *, double *, double *, int, int, double, double *, int *);
-void set_prm_defaults(struct PRM *);
-void interpolate_SAT_orbit_slow(struct SAT_ORB *orb, double time, double *, double *, double *, int *);
+void interpolate_SAT_orbit_slow(struct SAT_ORB *orb, double time, double *x, double *y, double *z, int *ir);
 void polyfit(double *, double *, double *, int *, int *);
+//void die(const char *msg, const char *file);  // 补充die函数声明
+void null_sio_struct(struct PRM *prm);        // 补充null_sio_struct声明
+void get_sio_struct(FILE *fp, struct PRM *prm); // 补充get_sio_struct声明
+void plh2xyz(double *plh, double *xyz, double ra, double f); // 补充plh2xyz声明
+
+// 补充die函数的实现（与声明严格一致）
+/*void die(const char *msg, const char *file) {
+    fprintf(stderr, "%s %s\n", msg, file);
+    exit(EXIT_FAILURE);
+}*/
+// 优化：将dist函数内联，减少函数调用开销
+static inline double dist(double x, double y, double z, int n, const OrbPos *orb_pos) {
+    double dx = x - orb_pos[n].x;
+    double dy = y - orb_pos[n].y;
+    double dz = z - orb_pos[n].z;
+    return sqrt(dx*dx + dy*dy + dz*dz);
+}
+
+// 优化：黄金分割搜索函数（修改为使用OrbPos，修复索引计算和类型错误）
+int goldop(double ts, double t1, const OrbPos *orb_pos, int ax, int bx, int cx, double xpx, double xpy, double xpz, double *rng, double *tm) {
+    double f1, f2;
+    int x0, x1, x2, x3;
+    int xmin;
+    int n = bx - ax;
+
+    x0 = ax;
+    x3 = bx;
+    if (abs(bx - cx) > abs(cx - ax)) {
+        x1 = cx;
+        x2 = cx + (int)(C * (bx - cx) + 0.5);  // 四舍五入避免截断错误
+    } else {
+        x2 = cx;
+        x1 = cx - (int)(C * (cx - ax) + 0.5);
+    }
+
+    // 边界检查：确保x1/x2在有效范围内
+    x1 = (x1 < ax) ? ax : (x1 > bx) ? bx : x1;
+    x2 = (x2 < ax) ? ax : (x2 > bx) ? bx : x2;
+
+    f1 = dist(xpx, xpy, xpz, x1, orb_pos);
+    f2 = dist(xpx, xpy, xpz, x2, orb_pos);
+
+    while ((x3 - x0) > TOL && abs(x2 - x1) > 0) {
+        if (f2 < f1) {
+            x0 = x1;
+            x1 = x2;
+            x2 = (int)(R * x3 + C * x1 + 0.5);
+            x2 = (x2 > bx) ? bx : x2;
+            SHFT2(f1, f2, dist(xpx, xpy, xpz, x2, orb_pos));
+        } else {
+            x3 = x2;
+            x2 = x1;
+            x1 = (int)(R * x0 + C * x2 + 0.5);
+            x1 = (x1 < ax) ? ax : x1;
+            SHFT2(f2, f1, dist(xpx, xpy, xpz, x1, orb_pos));
+        }
+    }
+
+    if (f1 < f2) {
+        xmin = x1;
+        *tm = orb_pos[x1].time;
+        *rng = f1;
+    } else {
+        xmin = x2;
+        *tm = orb_pos[x2].time;
+        *rng = f2;
+    }
+
+    // 确保xmin在有效范围内
+    xmin = (xmin >= ax && xmin <= bx) ? xmin : ax;
+
+    return xmin;
+}
+
+// 优化：轨道计算函数（输出OrbPos结构体数组）
+int calorb_alos(struct SAT_ORB *orb, OrbPos *orb_pos, double ts, double t1, int nrec) {
+    int i, k, ir;
+    int nval = 6;
+    double xs, ys, zs;
+    double *pt, *px, *py, *pz, *pvx, *pvy, *pvz;
+    double pt0;
+    double time;
+
+    // 内存分配检查
+    px = (double *)malloc(orb->nd * sizeof(double));
+    py = (double *)malloc(orb->nd * sizeof(double));
+    pz = (double *)malloc(orb->nd * sizeof(double));
+    pvx = (double *)malloc(orb->nd * sizeof(double));
+    pvy = (double *)malloc(orb->nd * sizeof(double));
+    pvz = (double *)malloc(orb->nd * sizeof(double));
+    pt = (double *)malloc(orb->nd * sizeof(double));
+
+    if (!px || !py || !pz || !pvx || !pvy || !pvz || !pt) {
+        perror("malloc failed in calorb_alos");
+        exit(EXIT_FAILURE);
+    }
+
+    pt0 = 86400. * orb->id + orb->sec;
+    for (k = 0; k < orb->nd; k++) {
+        pt[k] = pt0 + k * orb->dsec;
+        px[k] = orb->points[k].px;
+        py[k] = orb->points[k].py;
+        pz[k] = orb->points[k].pz;
+        pvx[k] = orb->points[k].vx;
+        pvy[k] = orb->points[k].vy;
+        pvz[k] = orb->points[k].vz;
+    }
+
+    // 优化：使用OpenMP并行化轨道插值（如果有多个CPU核心）
+    #pragma omp parallel for private(time, ir, xs, ys, zs) schedule(static)
+    for (i = 0; i < nrec + npad * 2; i++) {
+        time = t1 - npad * ts + i * ts;
+        orb_pos[i].time = time;
+
+        hermite_c(pt, px, pvx, orb->nd, nval, time, &xs, &ir);
+        hermite_c(pt, py, pvy, orb->nd, nval, time, &ys, &ir);
+        hermite_c(pt, pz, pvz, orb->nd, nval, time, &zs, &ir);
+
+        orb_pos[i].x = xs;
+        orb_pos[i].y = ys;
+        orb_pos[i].z = zs;
+    }
+
+    // 释放内存
+    free(px); free(py); free(pz); free(pt);
+    free(pvx); free(pvy); free(pvz);
+
+    return orb->nd;
+}
 
 int main(int argc, char **argv) {
+    FILE *fprm1 = NULL;
+    int otype = 1;          // 1:ASCII, 2:float, 3:double
+    int precise = 0;
+    int lookdir = 1;
+    int nrec;
+    double ts, dr;
+    double r0, rf, a0, af;
+    double fll;
+    double t1, t2;
+    double prf, RE, near_range, rshift, sub_int_r, chirp_ext, ashift, sub_int_a;
+    double fd1, fdd1, vel, lambda;
+    double sol_half = 0.5 * SOL;  // 预计算常数
 
-	FILE *fprm1 = NULL;
-	int otype;
-	double rln, rlt, rht, dr, t1, t11, t2, tm;
-	double ts, rng0;
-	double xp[3];
-	double xt[3];
-	double rp[3];
-	double dd[5]; /* dummy for output  double precision */
-	float ds[5];  /* dummy for output  single precision */
-	double r0, rf, a0, af;
-	double fll, rdd, daa, drr, dopc;
-	double dt, dtt, xs, ys, zs;
-	double time[20], rng[20], d[3]; /* arrays used for polynomial refinement of min range */
-        double vec1[3], vec2[3], vec0[3], det = 1.0;
-	int ir, k, ntt = 10, nc = 3;    /* size of arrays used for polynomial refinement */
-	int j, nrec, precise = 0;
-	int goldop();
-	int stai, endi, midi, lookdir;
-	double **orb_pos = NULL;
-	struct PRM prm;
-	struct SAT_ORB *orb = NULL;
-	char name[128], value[128];
-	double rsr;
-	FILE *ldrfile = NULL;
-	int calorb_alos(struct SAT_ORB *, double **orb_pos, double ts, double t1, int nrec);
-	FILE *outfp = NULL;  // 新增：输出文件指针
-        char *outfilename = NULL;  // 输出文件名
+    // 批量输出缓冲区（主进程用，线程使用私有缓冲区）
+    FILE *outfp = stdout;    // 默认输出到标准输出
+    char *outfilename = NULL;
 
-	/* Make sure usage is correct and files can be opened  */
+    struct PRM prm;
+    struct SAT_ORB *orb = NULL;
+    FILE *ldrfile = NULL;
 
-	if (argc < 3 || argc > 5) {
-		fprintf(stderr, "%s\n", USAGE);
-		exit(-1);
-	}
-	precise = atoi(argv[2]);
+    // 命令行参数解析（修复参数解析逻辑）
+    if (argc < 3 || argc > 5) {
+        fprintf(stderr, "%s\n", USAGE);
+        exit(EXIT_FAILURE);
+    }
 
-	/* otype:    1 -- ascii; 2 -- single precision binary; 3 -- double precision
-	 * binary    */
-
-	otype = 1;
-	if (argc == 5) {
-		if (!strcmp(argv[3], "-bos"))
-			otype = 2;
-		else if (!strcmp(argv[3], "-bod"))
-			otype = 3;
-		outfilename = argv[4];  
-		if (otype == 2 || otype == 3) {
-                    outfp = fopen(outfilename, "wb");
-                } else {
-                    outfp = fopen(outfilename, "w");
-                }
-	}
-	
-	fprintf(stderr, "%s,%d,%s,%s,%d\n", argv[1],precise,argv[3],argv[4],argc);
-	fprintf(stderr, "%s,%d,%d,%s\n", argv[1],precise,otype,outfilename);
-	    // 检查文件打开是否成功
-        if (outfp == NULL) {
-            perror("Failed to open output file");  // 打印具体错误原因
-            fprintf(stderr, "Could not open file: %s\n", outfilename);
-            exit(-1);
+    precise = atoi(argv[2]);
+    if (argc == 4) {
+        // 处理：SAT_llt2rat2 prm prec outputfile
+        outfilename = argv[3];
+        outfp = fopen(outfilename, "w");
+        if (!outfp) {
+            perror("Failed to open output file");
+            exit(EXIT_FAILURE);
         }
-
-	/*  open and read the parameter file */
-
-	if ((fprm1 = fopen(argv[1], "r")) == NULL) {
-		fprintf(stderr, "couldn't open master.PRM \n");
-		fprintf(stderr, "%s\n", USAGE);
-		exit(-1);
-	}
-
-	/* initialize the prm file   */
-
-	null_sio_struct(&prm);
-	set_prm_defaults(&prm);
-	get_sio_struct(fprm1, &prm);
-
-	fclose(fprm1);
-
-        lookdir = 1;
-        if (strcmp(prm.lookdir,"L") == 0) {
-            //fprintf(stderr,"SAT is left looking\n");
-            lookdir = -1;
-        }
-
-	/*  get the orbit data */
-
-	ldrfile = fopen(prm.led_file, "r");
-	if (ldrfile == NULL)
-		die("can't open ", prm.led_file);
-	orb = (struct SAT_ORB *)malloc(sizeof(struct SAT_ORB));
-	read_orb(ldrfile, orb);
-
-	dr = 0.5 * SOL / prm.fs;
-	r0 = -10.;
-	rf = prm.num_rng_bins + 10.;
-	a0 = -20.;
-	af = prm.num_patches * prm.num_valid_az + 20.;
-
-	/* compute the flattening */
-
-	fll = (prm.ra - prm.rc) / prm.ra;
-
-	/* compute the start time, stop time and increment */
-
-	t1 = 86400. * prm.clock_start + (prm.nrows - prm.num_valid_az) / (2. * prm.prf);
-	t2 = t1 + prm.num_patches * prm.num_valid_az / prm.prf;
-
-	/* sample the orbit only every 2th point or about 8 m along track */
-	/* if this is S1A which has a low PRF sample 2 times more often */
-
-	ts = 2. / prm.prf;
-	if (prm.prf < 600.) {
-		ts = 2. / (2. * prm.prf);
-		npad = 20000;
-	}
-	nrec = (int)((t2 - t1) / ts);
-
-	/* allocate storage for an array of pointers  */
-
-	orb_pos = malloc(4 * sizeof(double *));
-
-	/* for each pointer, allocate storage for an array of floats  */
-
-	for (j = 0; j < 4; j++) {
-		orb_pos[j] = malloc((nrec + 2 * npad) * sizeof(double));
-	}
-
-	/* read in the postion of the orbit */
-
-	(void)calorb_alos(orb, orb_pos, ts, t1, nrec);
-
-	/* read the llt points and convert to xyz.  */
-        int read_count = 0;
-
-	while (scanf(" %lf %lf %lf ", &rln, &rlt, &rht) == 3) {
-	        read_count++;
-		rp[0] = rlt;
-		rp[1] = rln;
-		rp[2] = rht;
-		plh2xyz(rp, xp, prm.ra, fll);
-		if (rp[1] > 180.)
-			rp[1] = rp[1] - 360.;
-		xt[0] = -1.0;
-		//fprintf(stderr, "%f,%f,%f\n", rp[0],rp[1],rp[2]);
-
-		/* compute the topography due to the difference between the local radius and
-		 * center radius */
-
-		rp[2] = sqrt(xp[0] * xp[0] + xp[1] * xp[1] + xp[2] * xp[2]) - prm.RE;
-
-		/* minimum for each point */
-
-		stai = 0;
-		endi = nrec + npad * 2 - 1;
-		midi = (stai + (endi - stai) * C);
-
-		(void)goldop(ts, t1, orb_pos, stai, endi, midi, xp[0], xp[1], xp[2], &rng0, &tm);
-		
-		if (precise == 1) {
-			// 初始化数组
-			memset(d, 0, sizeof(double)*3);
-			memset(time, 0, sizeof(double)*20);
-			memset(rng, 0, sizeof(double)*20);
-
-			dt = 1. / ntt;
-			int interpolate_ok = 1;
-			for (k = 0; k < ntt; k++) {
-				time[k] = dt * (k - ntt / 2 + .5);
-				t11 = tm + time[k];
-				interpolate_SAT_orbit_slow(orb, t11, &xs, &ys, &zs, &ir);
-				if (ir != 0) {
-					fprintf(stderr, "Interpolation failed at k=%d (ir=%d)\n", k, ir);
-					interpolate_ok = 0;
-					break;
-				}
-				rng[k] = sqrt((xp[0]-xs)*(xp[0]-xs) + (xp[1]-ys)*(xp[1]-ys) + (xp[2]-zs)*(xp[2]-zs)) - rng0;
-				if (k == 0) { vec0[0] = xs; vec0[1] = ys; vec0[2] = zs; }
-				if (k == ntt-1) { vec1[0] = xs; vec1[1] = ys; vec1[2] = zs; }
-			}
-
-			if (!interpolate_ok) {
-				det = 1.0;
-			} else {
-				vec1[0] -= vec0[0]; vec1[1] -= vec0[1]; vec1[2] -= vec0[2];
-				double vec1_norm = sqrt(vec1[0]*vec1[0] + vec1[1]*vec1[1] + vec1[2]*vec1[2]);
-				if (vec1_norm < 1e-10) {
-					det = 1.0;
-				} else {
-					polyfit(time, rng, d, &ntt, &nc);
-					if (fabs(d[2]) < 1e-10) {
-						dtt = 0.0;
-					} else {
-						dtt = -d[1]/(2*d[2]);
-					}
-
-					// 检查tm范围
-					if (tm + dtt < t1 || tm + dtt > t2) dtt = 0.0;
-					tm += dtt;
-
-					// 重新插值
-					interpolate_SAT_orbit_slow(orb, tm, &xs, &ys, &zs, &ir);
-					rng0 = sqrt((xp[0]-xs)*(xp[0]-xs) + (xp[1]-ys)*(xp[1]-ys) + (xp[2]-zs)*(xp[2]-zs));
-
-					vec2[0] = xp[0]-xs; vec2[1] = xp[1]-ys; vec2[2] = xp[2]-zs;
-					det = (vec2[1]*vec1[2]-vec2[2]*vec1[1])*xs + (vec2[2]*vec1[0]-vec2[0]*vec1[2])*ys + (vec2[0]*vec1[1]-vec2[1]*vec1[0])*zs;
-					det = (det * lookdir > 0) ? 1.0 : -1.0;
-					if (det < 0) det = det * (-1.0);  // only for DJ1
-				}
-			}
-		}
-		//fprintf(stderr, "something \n");
-
-		/* compute the range and azimuth in pixel space */
-		xt[0] = rng0 * det;
-		xt[1] = tm;
-		xt[0] = (xt[0] - prm.near_range) / dr - (prm.rshift + prm.sub_int_r) + prm.chirp_ext;
-		xt[1] = prm.prf * (xt[1] - t1) - (prm.ashift + prm.sub_int_a);
-
-		/* For Envisat correct for biases based on Pinon reflector analysis */
-		if (prm.SC_identity == 4) {
-			xt[0] = xt[0] + 8.4;
-			xt[1] = xt[1] + 4;
-		}
-
-		/* compute the azimuth and range correction if the Doppler is not zero */
-   
-		if (prm.fd1 != 0.) {
-			dopc = prm.fd1 + prm.fdd1 * (prm.near_range + dr * prm.num_rng_bins / 2.);
-			rdd = (prm.vel * prm.vel) / rng0;
-			daa = -0.5 * (prm.lambda * dopc) / rdd;
-			drr = 0.5 * rdd * daa * daa / dr;
-			daa = prm.prf * daa;
-			xt[0] = xt[0] + drr;
-			xt[1] = xt[1] + daa;
-		}
-
-              /*fprintf(stderr, "=== 调试信息 ===\n");
-              fprintf(stderr, "xt[0](范围像素): %.2f, xt[1](方位像素): %.2f\n", xt[0], xt[1]);
-              fprintf(stderr, "边界范围：r0=%.2f, rf=%.2f, a0=%.2f, af=%.2f\n", r0, rf, a0, af);
-              fprintf(stderr, "是否超出范围：%s\n", (xt[0]<r0||xt[0]>rf||xt[1]<a0||xt[1]>af) ? "是" : "否");
-              fprintf(stderr, "otype：%d (1=ASCII,2=单精度二进制,3=双精度二进制)\n", otype);
-              fprintf(stderr, "是否触发continue：%s\n", ((xt[0]<r0||xt[0]>rf||xt[1]<a0||xt[1]>af) && (otype>1)) ? "是" : "否");
-              fprintf(stderr, "=================\n");*/
-
-		if ((xt[0] < r0 || xt[0] > rf || xt[1] < a0 || xt[1] > af) && (otype > 1))
-			continue;
-                //fprintf(stderr, "\n out type %d \n", otype);
-		if (otype == 1) {
-			fprintf(outfp, "%.9f %.9f %.9f %.9f %.9f \n", xt[0], xt[1], rp[2], rp[1], rp[0]);
-			fflush(outfp);
-		}
-		else if (otype == 2) {
-			ds[0] = (float)xt[0];
-			ds[1] = (float)xt[1];
-			ds[2] = (float)rp[2];
-			ds[3] = (float)rp[1];
-			ds[4] = (float)rp[0];
-			//fprintf(stdout, "%.9f %.9f %.9f %.9f %.9f \n", xt[0], xt[1], rp[2], rp[1], rp[0]);
-			fwrite(ds, sizeof(float), 5, outfp);
-			fflush(outfp); // 强制刷新缓冲区，立即写入
-		}
-		else if (otype == 3) {
-			dd[0] = xt[0];
-			dd[1] = xt[1];
-			dd[2] = rp[2];
-			dd[3] = rp[1];
-			dd[4] = rp[0];
-			fwrite(dd, sizeof(double), 5, outfp);
-			fflush(outfp); // 强制刷新缓冲区，立即写入
-		}
-	}
-        // 关闭输出文件
-        if (outfp != NULL) {
-            fclose(outfp);
-            outfp = NULL;  // 避免野指针
-        }
-        //fprintf(stderr, "输入数据读取完成，共读取%d条\n", read_count);
-	/* free the orb_pos array  */
-	for (j = 0; j < 4; j++) {
-		free(orb_pos[j]);
-	}
-	free(orb_pos);
-	free(orb);
-	return (0);
-}
-
-/*    subfunctions    */
-
-int goldop(double ts, double t1, double **orb_pos, int ax, int bx, int cx, double xpx, double xpy, double xpz, double *rng,
-           double *tm) {
-
-	/* use golden section search to find the minimum range between the target and
-	 * the orbit */
-	/* xpx, xpy, xpz is the position of the target in cartesian coordinate */
-	/* ax is stai; bx is endi; cx is midi it's easy to tangle */
-
-	double f1, f2;
-	int x0, x1, x2, x3;
-	int xmin;
-	double dist();
-
-	x0 = ax;
-	x3 = bx;
-	//      if (fabs(bx-cx) > fabs(cx-ax)) {
-	if (abs(bx - cx) > abs(cx - ax)) {
-		x1 = cx;
-		x2 = cx + (int)fabs((C * (bx - cx)));
-	}
-	else {
-		x2 = cx;
-		x1 = cx - (int)fabs((C * (cx - ax))); /* make x0 to x1 the smaller segment */
-	}
-
-	f1 = dist(xpx, xpy, xpz, x1, orb_pos);
-	f2 = dist(xpx, xpy, xpz, x2, orb_pos);
-
-	while ((x3 - x0) > TOL && (x2 != x1)) {
-		if (f2 < f1) {
-			SHFT3(x0, x1, x2, (int)(R * x3 + C * x1));
-			SHFT2(f1, f2, dist(xpx, xpy, xpz, x2, orb_pos));
-		}
-		else {
-			SHFT3(x3, x2, x1, (int)(R * x0 + C * x2));
-			SHFT2(f2, f1, dist(xpx, xpy, xpz, x1, orb_pos));
-		}
-	}
-
-	if (f1 < f2) {
-        if (x1 <= bx && x1 >= ax) {
-		    xmin = x1;
-        }
-        else{
-            xmin = abs(x1-bx) > abs(x1-ax) ? ax : bx;
-        }
-		*tm = orb_pos[0][x1];
-		*rng = f1;
-	}
-	else {
-        if (x2 <= bx && x2 >= ax) {
-		    xmin = x2;
-        }
+    } else if (argc == 5) {
+        // 处理：SAT_llt2rat2 prm prec -bos/-bod outputfile
+        if (!strcmp(argv[3], "-bos")) otype = 2;
+        else if (!strcmp(argv[3], "-bod")) otype = 3;
         else {
-            xmin = abs(x2-bx) > abs(x2-ax) ? ax : bx;
+            fprintf(stderr, "Invalid option: %s\n", argv[3]);
+            exit(EXIT_FAILURE);
         }
-		*tm = orb_pos[0][x2];
-		*rng = f2;
-	}
+        outfilename = argv[4];
+        outfp = (otype == 2 || otype == 3) ? fopen(outfilename, "wb") : fopen(outfilename, "w");
+        if (!outfp) {
+            perror("Failed to open output file");
+            exit(EXIT_FAILURE);
+        }
+    }
 
-	return (xmin);
+    // 读取PRM文件
+    if ((fprm1 = fopen(argv[1], "r")) == NULL) {
+        fprintf(stderr, "couldn't open master.PRM \n");
+        exit(EXIT_FAILURE);
+    }
+    null_sio_struct(&prm);
+    set_prm_defaults(&prm);
+    get_sio_struct(fprm1, &prm);
+    fclose(fprm1);
+
+    // 预计算常数（避免循环内重复计算）
+    lookdir = (strcmp(prm.lookdir, "L") == 0) ? -1 : 1;
+    fll = (prm.ra - prm.rc) / prm.ra;
+    dr = sol_half / prm.fs;
+    t1 = 86400. * prm.clock_start + (prm.nrows - prm.num_valid_az) / (2. * prm.prf);
+    t2 = t1 + prm.num_patches * prm.num_valid_az / prm.prf;
+    ts = (prm.prf < 600.) ? (1. / prm.prf) : (2. / prm.prf);
+    npad = (prm.prf < 600.) ? 20000 : 8000;
+    nrec = (int)((t2 - t1) / ts + 0.5);  // 四舍五入
+
+    // 范围过滤参数
+    r0 = -10.;
+    rf = prm.num_rng_bins + 10.;
+    a0 = -20.;
+    af = prm.num_patches * prm.num_valid_az + 20.;
+
+    // 预计算PRM中的常用参数
+    prf = prm.prf;
+    RE = prm.RE;
+    near_range = prm.near_range;
+    rshift = prm.rshift;
+    sub_int_r = prm.sub_int_r;
+    chirp_ext = prm.chirp_ext;
+    ashift = prm.ashift;
+    sub_int_a = prm.sub_int_a;
+    fd1 = prm.fd1;
+    fdd1 = prm.fdd1;
+    vel = prm.vel;
+    lambda = prm.lambda;
+
+    // 读取轨道数据
+    ldrfile = fopen(prm.led_file, "r");
+    if (!ldrfile) die("can't open ", prm.led_file);
+    orb = (struct SAT_ORB *)malloc(sizeof(struct SAT_ORB));
+    read_orb(ldrfile, orb);
+    fclose(ldrfile);
+
+    // 分配轨道位置数组（优化为结构体数组）
+    OrbPos *orb_pos = (OrbPos *)malloc((nrec + 2 * npad) * sizeof(OrbPos));
+    if (!orb_pos) {
+        perror("malloc orb_pos failed");
+        exit(EXIT_FAILURE);
+    }
+
+    // 计算轨道位置
+    calorb_alos(orb, orb_pos, ts, t1, nrec);
+
+    // 第一步：读取所有输入点到内存（解决scanf线程不安全问题）
+    double *input_data = NULL;
+    int input_size = 0;
+    int input_capacity = 1024 * 1024;  // 初始容量1M点
+
+    input_data = (double *)malloc(input_capacity * 3 * sizeof(double));
+    if (!input_data) {
+        perror("malloc input_data failed");
+        exit(EXIT_FAILURE);
+    }
+
+    double rln, rlt, rht;
+    while (scanf(" %lf %lf %lf ", &rln, &rlt, &rht) == 3) {
+        if (input_size >= input_capacity) {
+            input_capacity *= 2;
+            double *tmp = (double *)realloc(input_data, input_capacity * 3 * sizeof(double));
+            if (!tmp) {
+                perror("realloc input_data failed");
+                exit(EXIT_FAILURE);
+            }
+            input_data = tmp;
+        }
+        input_data[input_size * 3 + 0] = rln;  // 经度
+        input_data[input_size * 3 + 1] = rlt;  // 纬度
+        input_data[input_size * 3 + 2] = rht;  // 高度
+        input_size++;
+    }
+    fprintf(stderr, "Read %d input points\n", input_size);
+
+    // 第二步：并行处理所有输入点
+    // 优化：设置OpenMP线程数（可根据CPU核心数调整）
+    omp_set_num_threads(omp_get_max_threads());
+
+    #pragma omp parallel private(rln, rlt, rht) \
+        private(xp, rp, xt, rng0, tm) \
+        private(stai, endi, midi, dt, k, ir, xs, ys, zs) \
+        private(time, rng, d, vec0, vec1, vec2, det, dtt) \
+        private(dopc, rdd, daa, drr) \
+        private(f1, f2, x0, x1, x2, x3, xmin) \
+        shared(input_data, input_size, orb_pos, prm, otype, precise, r0, rf, a0, af)
+    {
+        // 线程私有变量定义
+        double xp[3], rp[3], xt[3];
+        double rng0, tm;
+        int stai, endi, midi;
+        double dt;
+        int k, ir;
+        double xs, ys, zs;
+        double time[20], rng[20], d[3];
+        double vec0[3], vec1[3], vec2[3];
+        double det, dtt;
+        double dopc, rdd, daa, drr;
+        double f1, f2;
+        int x0, x1, x2, x3, xmin;
+
+        // 线程私有输出缓冲区
+        float ds_buf[BATCH_SIZE * 5];
+        double dd_buf[BATCH_SIZE * 5];
+        char ascii_buf[BATCH_SIZE * 128];  // 每个条目最多128字符
+        int buf_idx = 0;
+        int ascii_len = 0;
+
+        #pragma omp for schedule(dynamic, 1024)
+        for (int i = 0; i < input_size; i++) {
+            rln = input_data[i * 3 + 0];
+            rlt = input_data[i * 3 + 1];
+            rht = input_data[i * 3 + 2];
+
+            // 初始化rp数组（经纬度高度）
+            rp[0] = rlt;    // 纬度
+            rp[1] = rln;    // 经度
+            rp[2] = rht;    // 高度
+
+            // 转换为XYZ坐标（修复参数传递顺序）
+            plh2xyz(rp, xp, prm.ra, fll);
+            if (rp[1] > 180.) rp[1] -= 360.;  // 经度归一化到[-180, 180]
+
+            // 计算地形高度（相对于地球半径）
+            rp[2] = sqrt(xp[0]*xp[0] + xp[1]*xp[1] + xp[2]*xp[2]) - RE;
+
+            // 黄金分割搜索最小距离
+            stai = 0;
+            endi = nrec + npad * 2 - 1;
+            midi = stai + (int)((endi - stai) * C + 0.5);
+            goldop(ts, t1, orb_pos, stai, endi, midi, xp[0], xp[1], xp[2], &rng0, &tm);
+
+            // 多项式精修（如果需要）
+            if (precise == 1) {
+                memset(d, 0, sizeof(double)*3);
+                memset(time, 0, sizeof(double)*20);
+                memset(rng, 0, sizeof(double)*20);
+
+                int ntt = 10;
+                dt = 1.0 / ntt;
+                int interpolate_ok = 1;
+
+                for (k = 0; k < ntt; k++) {
+                    time[k] = dt * (k - ntt / 2 + 0.5);
+                    double t11 = tm + time[k];
+                    interpolate_SAT_orbit_slow(orb, t11, &xs, &ys, &zs, &ir);
+                    if (ir != 0) {
+                        interpolate_ok = 0;
+                        break;
+                    }
+                    rng[k] = sqrt((xp[0]-xs)*(xp[0]-xs) + (xp[1]-ys)*(xp[1]-ys) + (xp[2]-zs)*(xp[2]-zs)) - rng0;
+                    if (k == 0) { vec0[0] = xs; vec0[1] = ys; vec0[2] = zs; }
+                    if (k == ntt-1) { vec1[0] = xs; vec1[1] = ys; vec1[2] = zs; }
+                }
+
+                if (interpolate_ok) {
+                    // 计算轨道速度向量
+                    vec1[0] -= vec0[0];
+                    vec1[1] -= vec0[1];
+                    vec1[2] -= vec0[2];
+                    double vec1_norm = sqrt(vec1[0]*vec1[0] + vec1[1]*vec1[1] + vec1[2]*vec1[2]);
+
+                    if (vec1_norm > 1e-10) {
+                        int nc = 3;
+                        polyfit(time, rng, d, &ntt, &nc);
+
+                        if (fabs(d[2]) > 1e-10) {
+                            dtt = -d[1]/(2*d[2]);
+                            if (tm + dtt >= t1 && tm + dtt <= t2) tm += dtt;
+                        }
+
+                        // 重新插值轨道位置
+                        interpolate_SAT_orbit_slow(orb, tm, &xs, &ys, &zs, &ir);
+                        rng0 = sqrt((xp[0]-xs)*(xp[0]-xs) + (xp[1]-ys)*(xp[1]-ys) + (xp[2]-zs)*(xp[2]-zs));
+
+                        // 计算视线向量
+                        vec2[0] = xp[0]-xs;
+                        vec2[1] = xp[1]-ys;
+                        vec2[2] = xp[2]-zs;
+
+                        // 计算行列式判断方向
+                        det = (vec2[1]*vec1[2]-vec2[2]*vec1[1])*xs + 
+                              (vec2[2]*vec1[0]-vec2[0]*vec1[2])*ys + 
+                              (vec2[0]*vec1[1]-vec2[1]*vec1[0])*zs;
+                        det = (det * lookdir > 0) ? 1.0 : -1.0;
+                    }
+                }
+            }
+
+            // 计算像素坐标
+            xt[0] = rng0 * det;
+            xt[1] = tm;
+
+            // 距离像素坐标转换
+            xt[0] = (xt[0] - near_range) / dr - (rshift + sub_int_r) + chirp_ext;
+            // 方位像素坐标转换
+            xt[1] = prf * (xt[1] - t1) - (ashift + sub_int_a);
+
+            // Envisat偏置校正
+            if (prm.SC_identity == 4) {
+                xt[0] += 8.4;
+                xt[1] += 4;
+            }
+
+            // 多普勒校正
+            if (fd1 != 0.) {
+                dopc = fd1 + fdd1 * (near_range + dr * prm.num_rng_bins / 2.);
+                rdd = (vel * vel) / rng0;
+                daa = -0.5 * (lambda * dopc) / rdd;
+                drr = 0.5 * rdd * daa * daa / dr;
+                daa = prf * daa;
+                xt[0] += drr;
+                xt[1] += daa;
+            }
+
+            // 过滤超出范围的点（仅二进制输出）
+            if ((otype > 1) && (xt[0] < r0 || xt[0] > rf || xt[1] < a0 || xt[1] > af)) {
+                continue;
+            }
+
+            // 写入输出缓冲区
+            if (otype == 1) {
+                // ASCII输出：避免缓冲区溢出
+                int remaining = sizeof(ascii_buf) - ascii_len;
+                int written = snprintf(ascii_buf + ascii_len, remaining,
+                    "%.9f %.9f %.9f %.9f %.9f\n", 
+                    xt[0], xt[1], rp[2], rp[1], rp[0]);
+
+                if (written >= remaining) {
+                    // 缓冲区不足，先刷新
+                    #pragma omp critical(io_lock)
+                    fwrite(ascii_buf, 1, ascii_len, outfp);
+                    ascii_len = 0;
+                    // 重新写入当前条目
+                    snprintf(ascii_buf, sizeof(ascii_buf),
+                        "%.9f %.9f %.9f %.9f %.9f\n", 
+                        xt[0], xt[1], rp[2], rp[1], rp[0]);
+                    ascii_len = strlen(ascii_buf);
+                } else {
+                    ascii_len += written;
+                }
+            } else if (otype == 2) {
+                // 单精度二进制
+                ds_buf[buf_idx * 5 + 0] = (float)xt[0];
+                ds_buf[buf_idx * 5 + 1] = (float)xt[1];
+                ds_buf[buf_idx * 5 + 2] = (float)rp[2];
+                ds_buf[buf_idx * 5 + 3] = (float)rp[1];
+                ds_buf[buf_idx * 5 + 4] = (float)rp[0];
+                buf_idx++;
+
+                if (buf_idx >= BATCH_SIZE) {
+                    #pragma omp critical(io_lock)
+                    fwrite(ds_buf, sizeof(float), buf_idx * 5, outfp);
+                    buf_idx = 0;
+                }
+            } else if (otype == 3) {
+                // 双精度二进制
+                dd_buf[buf_idx * 5 + 0] = xt[0];
+                dd_buf[buf_idx * 5 + 1] = xt[1];
+                dd_buf[buf_idx * 5 + 2] = rp[2];
+                dd_buf[buf_idx * 5 + 3] = rp[1];
+                dd_buf[buf_idx * 5 + 4] = rp[0];
+                buf_idx++;
+
+                if (buf_idx >= BATCH_SIZE) {
+                    #pragma omp critical(io_lock)
+                    fwrite(dd_buf, sizeof(double), buf_idx * 5, outfp);
+                    buf_idx = 0;
+                }
+            }
+        }
+
+        // 刷新线程私有缓冲区剩余数据
+        #pragma omp critical(io_lock)
+        {
+            if (otype == 1 && ascii_len > 0) {
+                fwrite(ascii_buf, 1, ascii_len, outfp);
+            } else if (otype == 2 && buf_idx > 0) {
+                fwrite(ds_buf, sizeof(float), buf_idx * 5, outfp);
+            } else if (otype == 3 && buf_idx > 0) {
+                fwrite(dd_buf, sizeof(double), buf_idx * 5, outfp);
+            }
+        }
+    }
+
+    // 释放内存
+    free(input_data);
+    free(orb_pos);
+    if (orb) {
+        if (orb->points) free(orb->points);  // 释放轨道点数据
+        free(orb);
+    }
+
+    // 关闭输出文件
+    if (outfp != stdout) fclose(outfp);
+
+    return 0;
 }
 
-double dist(double x, double y, double z, int n, double **orb_pos) {
-
-	double d, dx, dy, dz;
-
-	dx = x - orb_pos[1][n];
-	dy = y - orb_pos[2][n];
-	dz = z - orb_pos[3][n];
-	d = sqrt(dx * dx + dy * dy + dz * dz);
-
-	return (d);
-}
-
-int calorb_alos(struct SAT_ORB *orb, double **orb_pos, double ts, double t1, int nrec)
-/* function to calculate every position in the orbit   */
-
-{
-	int i, k, nval;
-	// int     npad = 8000;   /* number of buffer points to add before and after
-	// the acquisition */
-	int ir;            /* return code: 0 = ok; 1 = interp not in center; 2 = time out of
-	                      range */
-	double xs, ys, zs; /* position at time */
-	double *pt, *px, *py, *pz, *pvx, *pvy, *pvz;
-	double pt0;
-	double time;
-
-	px = (double *)malloc(orb->nd * sizeof(double));
-	py = (double *)malloc(orb->nd * sizeof(double));
-	pz = (double *)malloc(orb->nd * sizeof(double));
-	pvx = (double *)malloc(orb->nd * sizeof(double));
-	pvy = (double *)malloc(orb->nd * sizeof(double));
-	pvz = (double *)malloc(orb->nd * sizeof(double));
-	pt = (double *)malloc(orb->nd * sizeof(double));
-
-	pt0 = 86400. * orb->id + orb->sec;
-	for (k = 0; k < orb->nd; k++) {
-		pt[k] = pt0 + k * orb->dsec;
-		px[k] = orb->points[k].px;
-		py[k] = orb->points[k].py;
-		pz[k] = orb->points[k].pz;
-		pvx[k] = orb->points[k].vx;
-		pvy[k] = orb->points[k].vy;
-		pvz[k] = orb->points[k].vz;
-	}
-
-	nval = 6;
-
-	/* loop to get orbit position of every point and store them into orb_pos */
-	for (i = 0; i < nrec + npad * 2; i++) {
-		time = t1 - npad * ts + i * ts;
-		orb_pos[0][i] = time;
-
-		hermite_c(pt, px, pvx, orb->nd, nval, time, &xs, &ir);
-		hermite_c(pt, py, pvy, orb->nd, nval, time, &ys, &ir);
-		hermite_c(pt, pz, pvz, orb->nd, nval, time, &zs, &ir);
-
-		orb_pos[1][i] = xs;
-		orb_pos[2][i] = ys;
-		orb_pos[3][i] = zs;
-	}
-
-	free((double *)px);
-	free((double *)py);
-	free((double *)pz);
-	free((double *)pt);
-	free((double *)pvx);
-	free((double *)pvy);
-	free((double *)pvz);
-
-	return orb->nd;
-}

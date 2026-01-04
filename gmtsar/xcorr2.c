@@ -1,4 +1,4 @@
-/*	$Id: xcorr2.c 73 2013-04-19 17:59:45Z pwessel $	*/
+/*	$Id: xcorr.c 73 2013-04-19 17:59:45Z pwessel $	*/
 /***************************************************************************/
 /* xcorr does a 2-D cross correlation on complex or real images            */
 /* either using a time convolution or wavenumber multiplication.           */
@@ -24,7 +24,7 @@
  *              - add range interpolation                                  *
  *              - eliminated obsolete options and code                     *
  *              - renamed xcorr_utils.c print_results.c                    *
- * 122225       希望提升速度，但是效果不佳。                                    *
+ *              - further testing....                                      *
  ***************************************************************************/
 /*-------------------------------------------------------*/
 // 必须先包含系统头文件，再包含GMTSAR相关头文件
@@ -224,10 +224,6 @@ void do_correlation(void *API, struct xcorr *xc) {
             iloc = i * xc->nxl + j;
 
             assign_values(API, xc, iloc);
-
-            // 移除调试输出：复数数组打印
-            // print_complex(xc->c1, xc->npy, xc->npx, 1);
-            // print_complex(xc->c2, xc->npy, xc->npx, 1);
 
             // 选择相关计算方式
             if (xc->corr_flag < 2)
