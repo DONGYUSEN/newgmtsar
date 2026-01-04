@@ -1,6 +1,7 @@
 #	$Id: Makefile 109 2015-01-19 23:01:24Z sandwell $
 #
 #	makefile for gmtsar directory (sbas.c not included yet)
+#gcc -z muldefs -s -fopenmp -Wl,-rpath,/usr/lib/x86_64-linux-gnu xcorr2.o -L/home/ysdong/GMTSAR/gmtsar -lgmtsar -L/usr/lib/x86_64-linux-gnu -lgmt -llapack -lblas -lm -L/usr/local/lib -ltiff -lm -lfftw3f -o xcorr2
 
 include ../config.mk
 
@@ -15,7 +16,8 @@ LIB_C		= aastretch.c acpatch.c calc_dop.c conv2d.c do_freq_xcorr.c \
 		  rmpatch.c rng_cmp.c rng_ref.c set_prm_defaults.c shift.c \
 		  sio_struct.c siocomplex.c spline.c trans_col.c utils.c utils_complex.c \
 		  write_orb.c sbas_utils.c stringutils.c update_PRM_sub.c rng_filter.c \
-		  lib_strfuncs.c
+		  lib_strfuncs.c 
+		  # xcorr2.c xcorr3.c 
 
 LIB_O		= $(LIB_C:.c=.o)
 LIB		= libgmtsar.$(LIBEXT)
