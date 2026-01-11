@@ -33,6 +33,7 @@ typedef struct {
     double dr;          // 距离分辨率
     double ra;          // 地球半径
     double fll;         // 扁率因子
+    double RE;
 } CalcParams;
 
 /* 外部函数声明 */
@@ -163,7 +164,7 @@ static int calculate_orbit_positions(struct SAT_ORB *orb, OrbPos *op,
 }
 
 /* 优化的主处理函数 */
-static void process_points(const double *in, double *out, int npt,
+static void process_points( double *in, double *out, int npt,
                           const OrbPos *orb_pos, int orb_count,
                           const CalcParams *params) {
     #pragma omp parallel for schedule(dynamic, 1024)
@@ -177,11 +178,18 @@ static void process_points(const double *in, double *out, int npt,
         
         // 将地理坐标转换为地心直角坐标
         plh2xyz(rp, xp, params->ra, params->fll);
-        
+
+		/* compute the topography due to the difference between the local radius and
+		 * center radius  修正高度？ysdong*/ 
+		rp[2] = sqrt(xp[0] * xp[0] + xp[1] * xp[1] + xp[2] * xp[2]) - params->RE;
+        in[3 * i + 2] = rp[2]; //add end ysdong 
+
+
         // 使用黄金搜索找到最近的点
         double rng0, tm;
         golden_search(orb_pos, 0, orb_count - 1, 
                      xp[0], xp[1], xp[2], &rng0, &tm);
+
         
         // 计算距离门和方位时间
         out[2 * i + 0] = (rng0 - params->near_range) * params->inv_dr;
@@ -334,6 +342,8 @@ int main(int argc, char **argv) {
     params.near_range = prm.near_range;
     params.ra = prm.ra;
     params.fll = (prm.ra - prm.rc) / prm.ra;
+    params.RE = prm.RE; //ysdong
+    
     
     // 处理所有点
     process_points(in, out, npt, orb_pos, orb_count, &params);
@@ -352,16 +362,16 @@ int main(int argc, char **argv) {
             buf[0] = (int16_t)round(rg);
             buf[1] = (int16_t)round(az);
             buf[2] = (int16_t)round(h);
-            buf[3] = (int16_t)round(lat * 1000);  // 保留3位小数
-            buf[4] = (int16_t)round(lon * 1000);
+            buf[3] = (int16_t)round(lon * 1000);  // 保留3位小数
+            buf[4] = (int16_t)round(lat * 1000);
             fwrite(buf, sizeof(int16_t), 5, stdout);
         } else if (binary_double) {
             // 二进制双精度输出
-            double buf[5] = {rg, az, h, lat, lon};
+            double buf[5] = {rg, az, h, lon, lat};
             fwrite(buf, sizeof(double), 5, stdout);
         } else {
             // 文本输出
-            printf("%.6f %.6f %.6f %.6f %.6f\n", rg, az, h, lat, lon);
+            printf("%.6f %.6f %.6f %.6f %.6f\n", rg, az, h, lon, lat);
         }
     }
     
