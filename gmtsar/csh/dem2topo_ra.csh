@@ -80,7 +80,7 @@ echo " range decimation is: " $rng
 
 
 if($SC == 11 || $SC == 12 || $SC == 14 ) then ## first modify
-     gmt grd2xyz --FORMAT_FLOAT_OUT=%lf $2 -s | SAT_llt2rat2 $1 1 -bod trans.dat  ## second modify 
+     gmt grd2xyz --FORMAT_FLOAT_OUT=%lf $2 -s | SAT_llt2rat2 $1 1 -bod > trans.dat  ## second modify 
      #gmt grd2xyz --FORMAT_FLOAT_OUT=%lf $2 -s | SAT_llt2rat $1 0 -bod  > trans.dat
   else
      gmt grd2xyz --FORMAT_FLOAT_OUT=%lf $2 -s | SAT_llt2rat $1 0 -bod  > trans.dat
@@ -116,10 +116,12 @@ else
       echo "                     DJ1 high resolution DEM to topo_ra.grd"
       gmt gmtconvert trans.dat -o0,1,2 -bi5d -bo3d | gmt blockmedian -R$region -I$rng/2 -bi3d -bo3d -r $V > temp.rat 
       gmt surface temp.rat -R$region -I$rng/2 -bi3d -T$tension -N1000 -Gpixel.grd -r -Q >& tmp
+      echo "第一步完成！"
       set RR = `grep Hint tmp | head -1 | awk '{for(i=1;i<=NF;i++) print $i}' | grep /`
       if ("x$RR" == "x") then
         gmt surface temp.rat -R$region -I$rng/2 -bi3d -T$tension -N1000 -Gpixel.grd -r $V
       else
+        echo "GMT surface & grdcut 处理中。"
         gmt surface temp.rat $RR -I$rng/2 -bi3d -T$tension -N1000 -Gpixel.grd -r $V
         gmt grdcut pixel.grd -R$region -Gtmp.grd
         mv tmp.grd pixel.grd
@@ -162,6 +164,7 @@ endif
 # 
 # plotting
 # 
+  echo "做图，看看效果"
   gmt grd2cpt topo_ra.grd -Cgray $V -Z > topo_ra.cpt 
   gmt grdimage topo_ra.grd $scale -P -Ctopo_ra.cpt -Bxaf+lRange -Byaf+l"Reversed Azimuth" -BWSen $V -K > topo_ra.ps
   gmt psscale -Rtopo_ra.grd -J -DJTC+w5i/0.2i+h -Ctopo_ra.cpt -Bxaf -By+lm -O >> topo_ra.ps

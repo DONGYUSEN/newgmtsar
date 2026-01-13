@@ -38,7 +38,9 @@
 #  Read parameters from the configure file
 #
 date
-set OMP_NUM_THREADS = 12
+setenv GMT_MEMORY_LIMIT 8192
+setenv OMP_NUM_THREADS 12
+
   set SAT = `echo $1`
   if ($#argv == 4) then
     set conf = `echo $4`
@@ -503,34 +505,50 @@ set OMP_NUM_THREADS = 12
         cp $aligned.PRM $aligned.PRM0
         SAT_baseline $master.PRM $aligned.PRM0 >> $aligned.PRM
         if ($SAT == "ALOS2_SCAN") then
-          xcorr $master.PRM $aligned.PRM -xsearch 32 -ysearch 256 -nx 32 -ny 128
+          xcorr3 $master.PRM $aligned.PRM -xsearch 32 -ysearch 256 -nx 32 -ny 128
           awk '{print $4}' < freq_xcorr.dat > tmp.dat
           set amedian = `sort -n tmp.dat | awk ' { a[i++]=$1; } END { print a[int(i/2)]; }'`
           set amax = `echo $amedian | awk '{print $1+3}'`
           set amin = `echo $amedian | awk '{print $1-3}'`
           awk '{if($4 > '$amin' && $4 < '$amax') print $0}' < freq_xcorr.dat > freq_alos2.dat
           fitoffset.csh 2 3 freq_alos2.dat 10 >> $aligned.PRM
-        else if ($SAT == "ERS" || $SAT == "ENVI" || $SAT == "ALOS" || $SAT == "CSK_RAW" || $SAT == "LT1" ||  $SAT == "ALOS_SLC") then
-          xcorr $master.PRM $aligned.PRM -xsearch 128 -ysearch 128 -nx 20 -ny 50
+        else if ($SAT == "ERS" || $SAT == "ENVI" || $SAT == "ALOS" || $SAT == "CSK_RAW" ||  $SAT == "ALOS_SLC") then
+          xcorr3 $master.PRM $aligned.PRM -xsearch 128 -ysearch 128 -nx 20 -ny 50
           fitoffset.csh 3 3 freq_xcorr.dat 18 >> $aligned.PRM
-        else if ($SAT == "DJ1") then  
-        echo "                     ..精细配准 DJ1            "
+        else if ($SAT == "DJ1" ) then  
+          echo "                     ..配准 DJ1            "
           set OMP_NUM_THREADS = 12
-          xcorr2 $master.PRM $aligned.PRM -xsearch 256 -ysearch 256 -nx 16 -ny 16 -noshift
+          xcorr3 $master.PRM $aligned.PRM -xsearch 256 -ysearch 256 -nx 16 -ny 16 -noshift
           filter_offset.csh freq_xcorr.dat  output.txt
           mv output.txt freq_xcorr.dat
           #sed -n '10,20p' freq_xcorr.dat
-          fitoffset.csh 3 3 freq_xcorr.dat 40 >> $aligned.PRM          
+          fitoffset.csh 3 3 freq_xcorr.dat 40 >> $aligned.PRM   
+        else if ($SAT == "LT1") then  
+          echo "                     ..配准 LT1            "
+          set OMP_NUM_THREADS = 12
+          xcorr3 $master.PRM $aligned.PRM -xsearch 512 -ysearch 512 -nx 16 -ny 16 -noshift
+          filter_offset.csh freq_xcorr.dat  output.txt
+          mv output.txt freq_xcorr.dat
+          sed -n '10,20p' freq_xcorr.dat
+          fitoffset.csh 3 3 freq_xcorr.dat 20 >> $aligned.PRM  
+          #echo "                     ..精配准 LT1            "
+          #xcorr2 $master.PRM $aligned.PRM -xsearch 256 -ysearch 256 -nx 15 -ny 15
+          #filter_offset.csh freq_xcorr.dat  output.txt
+          #mv output.txt freq_xcorr.dat
+          #sed -n '10,20p' freq_xcorr.dat
+          #fitoffset.csh 2 2 freq_xcorr.dat 20 >> $aligned.PRM     
+          
         else
-          xcorr $master.PRM $aligned.PRM -noshift -xsearch 128 -ysearch 128 -nx 20 -ny 50
+          xcorr3 $master.PRM $aligned.PRM -noshift -xsearch 128 -ysearch 128 -nx 20 -ny 50
           fitoffset.csh 2 2  freq_xcorr.dat 18 >> $aligned.PRM
         endif
         echo "                     ..重采样    "
-        echo ""
-        resamp $master.PRM $aligned.PRM $aligned.PRMresamp $aligned.SLCresamp 4
+        echo "多线程处理中"
+        resamp_omp $master.PRM $aligned.PRM $aligned.PRMresamp $aligned.SLCresamp 4  ##modify! 
         rm $aligned.SLC
         mv $aligned.SLCresamp $aligned.SLC
         cp $aligned.PRMresamp $aligned.PRM
+        echo "完成。"
 
         if ($iono == 1) then
           cd ../SLC_L
@@ -545,7 +563,7 @@ set OMP_NUM_THREADS = 12
             ln -s ../SLC/freq_xcorr.dat .
             fitoffset.csh 2 2 freq_xcorr.dat 18 >> $aligned.PRM
           endif
-          resamp $master.PRM $aligned.PRM $aligned.PRMresamp $aligned.SLCresamp 4
+          resamp_omp $master.PRM $aligned.PRM $aligned.PRMresamp $aligned.SLCresamp 4
           rm $aligned.SLC
           mv $aligned.SLCresamp $aligned.SLC
           cp $aligned.PRMresamp $aligned.PRM
@@ -562,7 +580,7 @@ set OMP_NUM_THREADS = 12
             ln -s ../SLC/freq_xcorr.dat .
             fitoffset.csh 2 2 freq_xcorr.dat 18 >> $aligned.PRM
           endif
-          resamp $master.PRM $aligned.PRM $aligned.PRMresamp $aligned.SLCresamp 4
+          resamp_omp $master.PRM $aligned.PRM $aligned.PRMresamp $aligned.SLCresamp 4
           rm $aligned.SLC
           mv $aligned.SLCresamp $aligned.SLC
           cp $aligned.PRMresamp $aligned.PRM
@@ -675,9 +693,9 @@ set OMP_NUM_THREADS = 12
       endif
 
     endif
-
+    
+    echo "3.                     裁减一下图，减少工作量"
     if ($region_cut != "") then
-echo "3.                     裁减一下图，减少工作量"
       echo "Cutting SLC image to $region_cut"
       if ($skip_master == 0 || $skip_master == 2) then
         cut_slc $master.PRM junk1 $region_cut
@@ -744,7 +762,9 @@ echo "3.                     裁减一下图，减少工作量"
       ln -s ../raw/$master.LED . 
       if (-f dem.grd) then 
         if ($topo_interp_mode == 1) then
+          date
           dem2topo_ra.csh master.PRM dem.grd 1
+          date
         else
           dem2topo_ra.csh master.PRM dem.grd
         endif
@@ -773,7 +793,7 @@ echo "3.                     裁减一下图，减少工作量"
         ln -s ../SLC/final-amp.grd . 
         ln -s ../SLC/amp-$master.grd .
         #org: # offset_topo amp-$master.grd topo_ra.grd 0 0 7 topo_shift.grd 
-        offset_topo final-amp.grd topo_ra.grd 0 0 9 topo_shift.grd
+        offset_topo2 final-amp.grd topo_ra.grd 0 0 64 topo_shift.grd
         cd ../SLC
         gmt grdmath amp-$master.grd amp-$aligned.grd ADD 0.5 MUL 0.5 POW LOG2 100 ADD FLIPUD = final-amp.grd # rebuild by ysdong
         cd ..

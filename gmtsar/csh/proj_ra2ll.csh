@@ -44,6 +44,8 @@ else
    set org_i = 16/32
 endif
 #
+setenv GMT_MEMORY_LIMIT 8192
+
 gmt grd2xyz $2 -s -bo3f > rap
 #
 #   make grids of longitude and latitude versus range and azimuth unless they already exist
@@ -53,7 +55,8 @@ if (! -f raln.grd || ! -f ralt.grd ) then
   echo "第一次投影，需要额外花点时间处理点数据"
   set region = `gmt gmtinfo rap -I$org_i -bi3f`
   gmt surface $1 -i0,1,3 -bi5d $region -I$org_i -T.50 -Graln.grd $V 
-  gmt surface $1 -i0,1,4 -bi5d $region -I$org_i -T.50 -Gralt.grd $V
+  gmt surface $1 -i0,1,4 -bi5d $region -I$org_i -T.50 -Gralt.grd $V 
+  # wait 
 endif
 #
 #  add lon and lat columns and then just keep lon, lat, input_phase
