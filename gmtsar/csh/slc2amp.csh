@@ -35,7 +35,7 @@ unset noclobber
   if ((($1 =~ *PRM*) || ($1 =~ *prm*)) && ($3 =~ *grd*)) then
     echo " range decimation is:" $2
     conv 2 $2 $fil1 $1 $3=bf
-    gmt grdmath $3 LOG2 100 ADD = test2.grd
+    gmt grdmath $3 LOG10 100 ADD = test2.grd
     gmt grd2cpt  test2.grd  -Cgray  -Z  > test2.cpt
     set base = `echo $3 | sed 's/...$//'`   # 去掉最后3个字符
     set filename = "${base}tif"

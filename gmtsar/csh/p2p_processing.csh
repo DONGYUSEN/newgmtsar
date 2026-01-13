@@ -792,7 +792,8 @@ setenv OMP_NUM_THREADS 12
         cd topo
         ln -s ../SLC/final-amp.grd . 
         ln -s ../SLC/amp-$master.grd .
-        #org: # offset_topo amp-$master.grd topo_ra.grd 0 0 7 topo_shift.grd 
+        #org: # offset_topo amp-$master.grd topo_ra.grd 0 0 7 topo_shift.grd
+        echo "配准SAR图像和DEM数据。。。。"
         offset_topo2 final-amp.grd topo_ra.grd 0 0 64 topo_shift.grd
         cd ../SLC
         gmt grdmath amp-$master.grd amp-$aligned.grd ADD 0.5 MUL 0.5 POW LOG2 100 ADD FLIPUD = final-amp.grd # rebuild by ysdong
@@ -870,6 +871,7 @@ setenv OMP_NUM_THREADS 12
     cp ../../SLC/$rep.PRM .
 
     if($topo_phase == 1) then
+      echo "生成干涉数据并去除地形影响........"
       if ($shift_topo == 1) then
         ln -s ../../topo/topo_shift.grd .
         intf.csh $ref.PRM $rep.PRM -topo topo_shift.grd  
@@ -880,7 +882,7 @@ setenv OMP_NUM_THREADS 12
         filter.csh $ref.PRM $rep.PRM $filter $dec $range_dec $azimuth_dec $compute_phase_gradient
       endif
     else
-      echo "NO TOPOGRAPHIC PHASE REMOVAL PORFORMED"
+      echo "生成干涉数据........"
       intf.csh $ref.PRM $rep.PRM
       filter.csh $ref.PRM $rep.PRM $filter $dec $range_dec $azimuth_dec $compute_phase_gradient
     endif
@@ -1015,7 +1017,7 @@ setenv OMP_NUM_THREADS 12
       set ref_id  = `grep SC_clock_start ../raw/$ref.PRM | awk '{printf("%d",int($3))}' `
       set rep_id  = `grep SC_clock_start ../raw/$rep.PRM | awk '{printf("%d",int($3))}' `
       cd $ref_id"_"$rep_id
-      echo "7.                     终于开始相位解缠了！" #一堆问题？
+      echo "7.                     终于开始相位解缠了，采用多线程方式，提高速度！" #一堆问题？
 #
 # landmask
 #
@@ -1049,15 +1051,15 @@ setenv OMP_NUM_THREADS 12
         gmt grdmath unwrap.grd phase_trend.grd SUB = unwrap_rm_trend.grd
         cp unwrap.grd unwrap.org.grd
         mv unwrap_rm_trend.grd unwrap.grd
-        echo "测试功能：在原始相位中去除相位趋势......，当前没有干活"
+        echo "测试功能：在原始相位中去除相位趋势......"
         #gmt grdmath phase.grd phase_trend.grd SUB = phase_rm_trend.grd
         #gmt grdmath phase_rm_trend 2 PI MUL MOD = wrapped_phase_0_2pi.grd -fg
         #mv phase.grd phase.org.grd
         #mv wrapped_phase_0_2pi.grd phase.grd
-        #gmt grdmath phasefilt.grd phase_trend.grd SUB = phasefilt_rm_trend.grd
-        #gmt grdmath phasefilt_rm_trend.grd 2 PI MUL MOD = wrapped_phase_0_2pi.grd -fg
-        #mv phasefilt.grd phasefilt.org.grd
-        #mv wrapped_phase_0_2pi.grd phasefilt.grd
+        gmt grdmath phasefilt.grd phase_trend.grd SUB = phasefilt_rm_trend.grd
+        gmt grdmath phasefilt_rm_trend.grd 2 PI MUL MOD = wrapped_phase_0_2pi.grd -fg
+        mv phasefilt.grd phasefilt.org.grd
+        mv wrapped_phase_0_2pi.grd phasefilt.grd
       endif
 
       cd ../..
