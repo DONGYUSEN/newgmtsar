@@ -513,7 +513,7 @@ setenv OMP_NUM_THREADS 12
           awk '{if($4 > '$amin' && $4 < '$amax') print $0}' < freq_xcorr.dat > freq_alos2.dat
           fitoffset.csh 2 3 freq_alos2.dat 10 >> $aligned.PRM
         else if ($SAT == "ERS" || $SAT == "ENVI" || $SAT == "ALOS" || $SAT == "CSK_RAW" ||  $SAT == "ALOS_SLC") then
-          xcorr3 $master.PRM $aligned.PRM -xsearch 128 -ysearch 128 -nx 20 -ny 50
+          xcorr3 $master.PRM $aligned.PRM -xsearch 128 -ysearch 128 -nx 20 -ny 50 
           fitoffset.csh 3 3 freq_xcorr.dat 18 >> $aligned.PRM
         else if ($SAT == "DJ1" ) then  
           echo "                     ..配准 DJ1            "
