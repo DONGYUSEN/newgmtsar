@@ -114,8 +114,8 @@ echo "topo_interp_mode = 0"
 echo ""
 echo "# topo_ra shift (1 -- yes; 0 -- no)"
 
-# if ($SAT == "ALOS_SLC" || $SAT == "ALOS" || $SAT == "ERS"|| $SAT == "DJ1") then
-if ($SAT == "ALOS_SLC" || $SAT == "ALOS" || $SAT == "ERS" ) then
+if ($SAT == "ALOS_SLC" || $SAT == "ALOS" || $SAT == "ERS"|| $SAT == "DJ1") then
+# if ($SAT == "ALOS_SLC" || $SAT == "ALOS" || $SAT == "ERS" ) then
   echo "shift_topo = 1"
 else 
   echo "shift_topo = 0"
@@ -189,7 +189,7 @@ echo "#####################################"
 echo "# correlation threshold for snaphu.csh (0~1)"
 echo "# set it to be 0 to skip unwrapping."
 if ($SAT == "DJ1") then
-  echo "threshold_snaphu = 0"
+  echo "threshold_snaphu = 0.2"
 else
   echo "threshold_snaphu = 0"
 endif
@@ -207,7 +207,7 @@ echo "# Allow phase discontinuity in unrapped phase. This is needed for interfer
 echo "# defo_max = 0 - used for smooth unwrapped phase such as interseismic deformation"
 echo "# defo_max = 65 - will allow a phase jump of 65 cycles or 1.82 m of deformation at C-band"
 echo "#"
-echo "defomax = 0"
+echo "defomax = 32"
 echo ""
 echo "#####################################"
 echo "#   parameters for geocode          #"
