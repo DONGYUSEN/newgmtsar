@@ -1,0 +1,10 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "/^conda activate gmt && python3 - <<'PYTHON'\nimport sys\nsys\\.path\\.insert\\(0,'/home/ysdong/Software/GMTSAR/DInSAR/utils'\\)\nimport dem2sar, geo2rdr, sarsim\nprint\\('Imported modules under conda gmt'\\)\nPYTHON$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    },
+    "python.defaultInterpreterPath": "conda activate gmt; python3",
+    "git.autofetch": true
+}

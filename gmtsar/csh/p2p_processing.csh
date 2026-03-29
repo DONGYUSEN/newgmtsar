@@ -39,7 +39,7 @@
 #
 date
 setenv GMT_MEMORY_LIMIT 8192
-setenv OMP_NUM_THREADS 12
+setenv OMP_NUM_THREADS 10
 
   set SAT = `echo $1`
   if ($#argv == 4) then
@@ -517,27 +517,33 @@ setenv OMP_NUM_THREADS 12
           fitoffset.csh 3 3 freq_xcorr.dat 18 >> $aligned.PRM
         else if ($SAT == "DJ1" ) then  
           echo "                     ..配准 DJ1            "
-          set OMP_NUM_THREADS = 12
+          set OMP_NUM_THREADS = 10
           xcorr3 $master.PRM $aligned.PRM -xsearch 256 -ysearch 256 -nx 16 -ny 16 -noshift
           filter_offset.csh freq_xcorr.dat  output.txt
           mv output.txt freq_xcorr.dat
           #sed -n '10,20p' freq_xcorr.dat
           fitoffset.csh 3 3 freq_xcorr.dat 40 >> $aligned.PRM   
         else if ($SAT == "LT1") then  
-          echo "                     ..配准 LT1            "
-          set OMP_NUM_THREADS = 12
-          xcorr3 $master.PRM $aligned.PRM -xsearch 512 -ysearch 512 -nx 16 -ny 16 -noshift
+          echo "                     ..配准 LT1(多尺度配准技术)            "
+          echo "粗配准 LT1: huge windows for first step!"
+          xcorr3 $master.PRM $aligned.PRM -nx 3 -ny 3 -nointerp -xsearch 2048 -ysearch 2048 -noshift
+          fitoffset.csh 1 1 freq_xcorr.dat 18 >> $aligned.PRM  
+          fitoffset.csh 1 1 freq_xcorr.dat 18
+
+          echo "精配准 LT1: smaller windows for second step!"
+          xcorr3 $master.PRM $aligned.PRM -nx 30 -ny 30  -xsearch 512 -ysearch 512 
           filter_offset.csh freq_xcorr.dat  output.txt
           mv output.txt freq_xcorr.dat
-          sed -n '10,20p' freq_xcorr.dat
-          fitoffset.csh 3 3 freq_xcorr.dat 20 >> $aligned.PRM  
-          #echo "                     ..精配准 LT1            "
-          #xcorr2 $master.PRM $aligned.PRM -xsearch 256 -ysearch 256 -nx 15 -ny 15
+          # fitoffset.csh 3 3 freq_xcorr.dat 30 >> $aligned.PRM  
+          offsetfit2 3 freq_xcorr.dat >> $aligned.PRM 
+
+          #echo "Last step:   ..精配准 LT1             "
+          #xcorr3 $master.PRM $aligned.PRM -xsearch 256 -ysearch 512 -nx 20 -ny 40
           #filter_offset.csh freq_xcorr.dat  output.txt
           #mv output.txt freq_xcorr.dat
           #sed -n '10,20p' freq_xcorr.dat
-          #fitoffset.csh 2 2 freq_xcorr.dat 20 >> $aligned.PRM     
-          
+          #offsetfit2 3 freq_xcorr.dat >> $aligned.PRM     
+          #set OMP_NUM_THREADS = 10
         else
           xcorr3 $master.PRM $aligned.PRM -noshift -xsearch 128 -ysearch 128 -nx 20 -ny 50
           fitoffset.csh 2 2  freq_xcorr.dat 18 >> $aligned.PRM
@@ -545,6 +551,7 @@ setenv OMP_NUM_THREADS 12
         echo "                     ..重采样    "
         echo "多线程处理中"
         resamp_omp $master.PRM $aligned.PRM $aligned.PRMresamp $aligned.SLCresamp 4  ##modify! 
+        # resamp $master.PRM $aligned.PRM $aligned.PRMresamp $aligned.SLCresamp 4  ##modify! 
         rm $aligned.SLC
         mv $aligned.SLCresamp $aligned.SLC
         cp $aligned.PRMresamp $aligned.PRM
@@ -787,6 +794,7 @@ setenv OMP_NUM_THREADS 12
         set rng = `gmt grdinfo ../topo/topo_ra.grd | grep x_inc | awk '{print $7}'`
         slc2amp.csh $master.PRM $rng amp-$master.grd 
         slc2amp.csh $aligned.PRM $rng amp-$aligned.grd 
+        #wait
         gmt grdmath amp-$master.grd amp-$aligned.grd ADD 0.5 MUL LOG2 100 ADD  = final-amp.grd
         cd ..
         cd topo
@@ -803,8 +811,9 @@ setenv OMP_NUM_THREADS 12
         cd SLC 
         set rng_samp_rate = `grep rng_samp_rate $master.PRM | awk 'NR == 1 {printf("%d", $3)}'`
         set rng = `gmt grdinfo ../topo/topo_ra.grd | grep x_inc | awk '{print $7}'`
-        slc2amp.csh $master.PRM $rng amp-$master.grd 
-        slc2amp.csh $aligned.PRM $rng amp-$aligned.grd 
+        slc2amp.csh $master.PRM $rng amp-$master.grd
+        slc2amp.csh $aligned.PRM $rng amp-$aligned.grd
+        #wait 
         gmt grdmath amp-$master.grd amp-$aligned.grd ADD 0.5 MUL 0.5 POW LOG2 100 ADD FLIPUD = final-amp.grd # by ysdong add flipup 20251227
         rm amp-$aligned.grd
         cd ..
@@ -1045,22 +1054,25 @@ setenv OMP_NUM_THREADS 12
       #echo "SNAPHU.CSH - END"
       echo "相位解缠结束：SNAPHU.CSH - END"
       
-      if ($SAT == "DJ1" || $SAT == "LT1" ||  $SAT == "GF3" ) then 
-        echo "测试功能：在解缠后相位中去除 DJ1、LT1、GF3 平行干涉条纹......"
-        gmt grdtrend  unwrap.grd -N3+r -Tphase_trend.grd  # N5 = a+bx+cy+dx^2+ey^2; N3 = a+bx+cy
-        gmt grdmath unwrap.grd phase_trend.grd SUB = unwrap_rm_trend.grd
-        cp unwrap.grd unwrap.org.grd
-        mv unwrap_rm_trend.grd unwrap.grd
-        echo "测试功能：在原始相位中去除相位趋势......"
-        #gmt grdmath phase.grd phase_trend.grd SUB = phase_rm_trend.grd
-        #gmt grdmath phase_rm_trend 2 PI MUL MOD = wrapped_phase_0_2pi.grd -fg
-        #mv phase.grd phase.org.grd
-        #mv wrapped_phase_0_2pi.grd phase.grd
-        gmt grdmath phasefilt.grd phase_trend.grd SUB = phasefilt_rm_trend.grd
-        gmt grdmath phasefilt_rm_trend.grd 2 PI MUL MOD = wrapped_phase_0_2pi.grd -fg
-        mv phasefilt.grd phasefilt.org.grd
-        mv wrapped_phase_0_2pi.grd phasefilt.grd
-      endif
+     # if ($SAT == "DJ1" || $SAT == "LT1" ||  $SAT == "GF3" ) then 
+        #  echo "测试功能：在解缠后相位中去除 DJ1、LT1、GF3 平行干涉条纹......"
+        
+        #  gmt grdtrend  unwrap.grd -N3+r -Tphase_trend.grd  # N5 = a+bx+cy+dx^2+ey^2; N3 = a+bx+cy
+        #  gmt grdmath unwrap.grd phase_trend.grd SUB = unwrap_rm_trend.grd
+        #  cp unwrap.grd unwrap.org.grd
+        #  mv unwrap_rm_trend.grd unwrap.grd
+        #  echo "测试功能：在原始相位中去除相位趋势......"
+        #  echo "原始相位文件保留为unwrap.org.grd, 趋势文件保留为phase_trend.grd"
+          #gmt grdmath phase.grd phase_trend.grd SUB = phase_rm_trend.grd
+          #gmt grdmath phase_rm_trend 2 PI MUL MOD = wrapped_phase_0_2pi.grd -fg
+          #mv phase.grd phase.org.grd
+          #mv wrapped_phase_0_2pi.grd phase.grd
+        #  gmt grdmath phasefilt.grd phase_trend.grd SUB = phasefilt_rm_trend.grd
+        #  gmt grdmath phasefilt_rm_trend.grd 2 PI MUL MOD = wrapped_phase_0_2pi.grd -fg
+        #  mv phasefilt.grd phasefilt.org.grd
+        #  mv wrapped_phase_0_2pi.grd phasefilt.grd
+        #  echo "原始filt相位文件保留为：phasefilt.org.grd"
+      # endif
 
       cd ../..
     else 

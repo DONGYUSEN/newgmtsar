@@ -15,10 +15,14 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+
+#define MAX_COEFFS 7  // 每个方向最多6个系数
+
+
 /*-------------------------------------------------------------*/
 char *USAGE =
-    "\nUsage: "
-    "resamp_omp master.PRM aligned.PRM new_aligned.PRM new_aligned.SLC intrp\n"
+    "\nUsage: v0.11 "
+    "resamp_omp master.PRM aligned.PRM new_aligned.PRM new_aligned.SLC intrp fitfile\n"
     " intrp: 1-nearest  2-bilinear  3-bicubic  4-bisinc\n";
 
 /*---------------- function prototypes ------------------------*/
@@ -34,6 +38,84 @@ double cubic_kernel(double, double);
 void sinc_one(double *, double *, double, double, double *);
 double sinc_kernel(double);
 
+	// add by dong
+
+double a_coeffs[MAX_COEFFS] = {0};
+double b_coeffs[MAX_COEFFS] = {0};
+double error_x = 0.0;
+double error_y = 0.0;
+
+
+// 从文件中读取拟合系数和误差
+int read_fit_coefficients(const char *filename, 
+                         double *a_coeffs, double *b_coeffs,
+                         double *error_x, double *error_y) {
+    FILE *fp = fopen(filename, "r");
+    if (!fp) {
+        printf("错误: 无法打开文件 %s\n", filename);
+        return -1;
+    }
+    
+    char line[1024];
+    if (fgets(line, sizeof(line), fp) == NULL) {
+        printf("错误: 文件为空\n");
+        fclose(fp);
+        return -1;
+    }
+    
+    fclose(fp);
+    
+    // 解析行中的数值
+    char *token = strtok(line, " \t\n");
+    int count = 0;
+    double values[14];  // 12个系数 + 2个误差 = 14个值
+    
+    while (token != NULL && count < 14) {
+        values[count] = atof(token);
+        count++;
+        token = strtok(NULL, " \t\n");
+    }
+    
+    if (count < 14) {
+        printf("警告: 只读取到 %d 个值，预期 14 个\n", count);
+    }
+    
+    // 将值复制到相应的数组中
+    for (int i = 0; i < MAX_COEFFS; i++) {
+        if (i < count) {
+            a_coeffs[i] = values[i];
+        } else {
+            a_coeffs[i] = 0.0;
+        }
+    }
+    
+    for (int i = 0; i < MAX_COEFFS; i++) {
+        int idx = MAX_COEFFS + i;
+        if (idx < count) {
+            b_coeffs[i] = values[idx];
+        } else {
+            b_coeffs[i] = 0.0;
+        }
+    }
+    
+    // 读取误差值
+    if (count >= 13) {
+        *error_x = values[12];
+    } else {
+        *error_x = 0.0;
+    }
+    
+    if (count >= 14) {
+        *error_y = values[13];
+    } else {
+        *error_y = 0.0;
+    }
+    
+    return 0;
+}
+
+
+
 /*=============================================================*/
 int main(int argc, char **argv) {
 
@@ -47,11 +129,34 @@ int main(int argc, char **argv) {
     size_t st_size;
     double ram[2], ras[2];
 
+
     struct PRM pm, ps;
     double sv_pr[6];
 
-    if (argc < 6)
+    if (argc < 7)
         die(USAGE, "");
+
+
+    if (read_fit_coefficients(argv[6], a_coeffs, b_coeffs, &error_x, &error_y) == 0) {
+        printf("成功读取系数:\n");
+        
+        printf("X方向系数 (a0-a5):\n");
+        for (int i = 0; i < MAX_COEFFS; i++) {
+            printf("  a%d = %.12e\n", i, a_coeffs[i]);
+        }
+        
+        printf("\nY方向系数 (b0-b5):\n");
+        for (int i = 0; i < MAX_COEFFS; i++) {
+            printf("  b%d = %.12e\n", i, b_coeffs[i]);
+        }
+        
+        //printf("\n误差:\n");
+        //printf("  X方向误差: %.12e\n", error_x);
+        //printf("  Y方向误差: %.12e\n", error_y);
+    } else {
+        printf("读取系数失败\n");
+    }
+
 
     intrp = atoi(argv[5]);
 
@@ -73,6 +178,8 @@ int main(int argc, char **argv) {
         sv_pr[5] = ps.a_stretch_a; ps.a_stretch_a = 0.;
     }
 
+	//printf("a:%f, %f, %f, %f", ps.ashift,ps.sub_int_a,ps.stretch_a, ps.a_stretch_a);
+
     /* mmap input SLC */
     if ((fdin = open(ps.SLC_file, O_RDONLY)) < 0)
         die("cannot open input SLC", ps.SLC_file);
@@ -86,6 +193,10 @@ int main(int argc, char **argv) {
     /* open output */
     if ((SLC_file2 = fopen(argv[4], "wb")) == NULL)
         die("cannot open output SLC", argv[4]);
+
+		    /* open output */
+    //if ((fitfile = fopen(argv[7], "r")) == NULL)
+    //    die("cannot open output fitfile", argv[7]);
 
     /*=========================================================
       OpenMP parallel region
@@ -139,6 +250,7 @@ int main(int argc, char **argv) {
         ps.a_stretch_a = sv_pr[5];
     }
 
+
     /* update PRM */
     ps.num_rng_bins = pm.num_rng_bins;
     ps.fs = pm.fs;
@@ -149,7 +261,7 @@ int main(int argc, char **argv) {
     ps.num_lines = pm.num_lines;
     ps.num_patches = pm.num_patches;
     ps.nrows = pm.nrows;
-    printf(" Ready update PRM \n");
+    //printf(" Ready update PRM \n");
 
     if ((prmout = fopen(argv[3], "w")) == NULL)
         die("cannot open output PRM", argv[3]);
@@ -521,10 +633,16 @@ void fix_prm_params(struct PRM *p, char *s) {
 
 void ram2ras(struct PRM ps, double *ram, double *ras) {
 	/* this is the range coordinate */
-	ras[0] = ram[0] + ((ps.rshift + ps.sub_int_r) + ram[0] * ps.stretch_r + ram[1] * ps.a_stretch_r);
+	//ras[0] = ram[0] + ((ps.rshift + ps.sub_int_r) + ram[0] * ps.stretch_r + ram[1] * ps.a_stretch_r);
+	ras[0] = ram[0] + a_coeffs[0] + (ram[0]+a_coeffs[0]) * a_coeffs[1] +  pow((ram[0]+a_coeffs[0]),2) * a_coeffs[2] + pow((ram[0]+a_coeffs[0]),3) *  a_coeffs[3] + pow((ram[0]+a_coeffs[0]),4) * a_coeffs[4] + pow((ram[0]+a_coeffs[0]),5) *  a_coeffs[5];
+	//ras[0] = ram[0] + a_coeffs[0] + ram[0] * a_coeffs[1] +  ram[1] * a_coeffs[2] + ram[1] * ram[0] * a_coeffs[3] + ram[0] * ram[0] * a_coeffs[4] + ram[1] * ram[1] * a_coeffs[5];
 
 	/* this is the azimuth coordinate */
-	ras[1] = ram[1] + ((ps.ashift + ps.sub_int_a) + ram[0] * ps.stretch_a + ram[1] * ps.a_stretch_a);
+	//ras[1] = ram[1] + ((ps.ashift + ps.sub_int_a) + ram[0] * ps.stretch_a + ram[1] * ps.a_stretch_a);
+
+	ras[1] = ram[1] + b_coeffs[0] + ram[1] * b_coeffs[1] +  pow(ram[1],2) * b_coeffs[2] + pow(ram[1],3) * b_coeffs[3] + pow(ram[1],4) *  b_coeffs[4] + pow(ram[1],5) * b_coeffs[5];
+
+	//ras[1] = ram[1] + b_coeffs[0] + ram[1] * b_coeffs[1] +  ram[0] * b_coeffs[2] + ram[1] * ram[0] * b_coeffs[3] + ram[1] * ram[1] * b_coeffs[4] + ram[0] * ram[0] * b_coeffs[5];
 }
 
 

@@ -129,6 +129,7 @@ int write_slc(TIFF *tif, FILE *slc, char *orbdir, double SLC_factor) {
 
 	buf = (uint16 *)_TIFFmalloc(TIFFScanlineSize(tif));
 	width = widthi - widthi % 4;
+	height = height - height % 4;
 	tmp = (short *)malloc(width * 2 * sizeof(short));
 	printf("Writing SLC..Image Size: %d X %d...\n", width, height);
 
@@ -146,8 +147,10 @@ int write_slc(TIFF *tif, FILE *slc, char *orbdir, double SLC_factor) {
             }
             rsum = rsum + fabs((double)tmp[j]);
             nsum = nsum + 1;
+			
 		}
 		fwrite(tmp, sizeof(short), width * 2, slc);
+		//if(i%5 == 0) printf(" %.2f %..", i*100.0/height);
     }
     printf("Number of clipped short int is %d\n",nclip);
     rmad = rsum / nsum;
@@ -328,7 +331,7 @@ int pop_prm(struct PRM *prm, tree *xml_tree, char *file_name) {
 
 	search_tree(xml_tree, "/level1Product/productInfo/imageDataInfo/imageRaster/numberOfColumns/", tmp_c, 1, 0, 1);
 	// tmp_i = (int)str2double(tmp_c) - (int)str2double(tmp_c)%4;
-	prm->num_rng_bins = (int)str2double(tmp_c) - (int)str2double(tmp_c)%4;
+	prm->num_rng_bins = (int)str2double(tmp_c) - (int)str2double(tmp_c) % 4;
 	prm->bytes_per_line = prm->num_rng_bins * 4; // tmp_i*4;
 	prm->good_bytes = prm->bytes_per_line;
 	prm->caltone = 0.0;

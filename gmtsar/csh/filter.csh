@@ -139,6 +139,9 @@ errormessage:
 # filter the two amplitude images
 #
   echo "making amplitudes..."
+  echo "conv $az_lks $dec_rng $filter1 $1 amp1_tmp.grd=bf"
+  echo "conv $idec $jdec $filter2 amp1_tmp.grd=bf amp1.grd"
+
   conv $az_lks $dec_rng $filter1 $1 amp1_tmp.grd=bf
   conv $idec $jdec $filter2 amp1_tmp.grd=bf amp1.grd
   rm amp1_tmp.grd
@@ -149,6 +152,7 @@ errormessage:
 # filter the real and imaginary parts of the interferogram
 #
   echo "filtering interferogram..."
+  echo "conv $az_lks $dec_rng $filter1 real.grd=bf real_tmp.grd=bf"
   conv $az_lks $dec_rng $filter1 real.grd=bf real_tmp.grd=bf
   conv $idec $jdec $filter2 real_tmp.grd=bf realfilt.grd
   conv $az_lks $dec_rng $filter1 imag.grd=bf imag_tmp.grd=bf

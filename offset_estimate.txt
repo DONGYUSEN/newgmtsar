@@ -1,0 +1,33 @@
+OFFSET_ESTIMATION
+polynomial_order: 1
+initial_points: 10
+final_points: 10
+outliers_removed: 0
+azimuth_rms: 0.0000
+range_rms: 0.0000
+rows_mean: 1.0000
+rows_std: 1.0000
+cols_mean: 2.0000
+cols_std: 1.0000
+fitted_params:
+  azimuth_a0: 0.1000
+  azimuth_a1: 0.0000
+  azimuth_a2: 0.0000
+  range_b0: 0.2000
+  range_b1: 0.0000
+  range_b2: 0.0000
+FITTING_FORMULA
+azimuth_offset = a0 + a1*(row - rows_mean)/rows_std + a2*(col - cols_mean)/cols_std
+range_offset = b0 + b1*(row - rows_mean)/rows_std + b2*(col - cols_mean)/cols_std
+PARAMETERS
+a0 = 0.100000000000
+a1 = 0.000000000000
+a2 = 0.000000000000
+b0 = 0.200000000000
+b1 = 0.000000000000
+b2 = 0.000000000000
+NORMALIZATION
+rows_mean = 1.000000000000
+rows_std = 1.000000000000
+cols_mean = 2.000000000000
+cols_std = 1.000000000000

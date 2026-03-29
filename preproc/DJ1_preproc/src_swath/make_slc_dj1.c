@@ -270,14 +270,15 @@ int pop_prm(struct PRM *prm, tree *xml_tree, char *file_name) {
 
 	search_tree(xml_tree, "/product/generalAnnotation/productInformation/pass/", tmp_c, 1, 0, 1);
 	strasign(prm->orbdir, tmp_c, 0, 0);
-	/*search_tree(xml_tree, "/product/imageAnnotation/imageInformation/look_side/", tmp_c, 1, 0, 1); //no look_side after 2023
-	//printf("look_side: %s", tmp_c);
-        if (strcmp(tmp_c, "left") == 0) {
-          strasign(prm->lookdir, "L", 0, 0);
-        } else {
-          strasign(prm->lookdir, "R", 0, 0);
-        }*/
-        strasign(prm->lookdir, "L", 0, 0);
+	/*
+	search_tree(xml_tree, "/product/imageAnnotation/imageInformation/look_side/", tmp_c, 1, 0, 1); //no look_side after 2023
+	//printf("look_side: %s", tmp_c)
+    if (strcmp(tmp_c, "left") == 0) 
+		strasign(prm->lookdir, "L", 0, 0); 
+	else 
+        strasign(prm->lookdir, "R", 0, 0);
+    */
+    strasign(prm->lookdir, "L", 0, 0);
 	
 
 	strcpy(tmp_c, file_name);

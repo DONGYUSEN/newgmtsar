@@ -46,13 +46,17 @@ unset noclobber
 #
   set pth = `pwd`
   cd raw/$1
-  set f1m = `ls */*iw1*$pol*xml | awk '{print substr($1,12,length($1)-15)}'`
-  set f2m = `ls */*iw2*$pol*xml | awk '{print substr($1,12,length($1)-15)}'`
-  set f3m = `ls */*iw3*$pol*xml | awk '{print substr($1,12,length($1)-15)}'`
+  # set f1m = `find ./ -name "*iw1*${pol}*.xml" -type f | head -1`  
+  set f1m = `/usr/bin/ls */*iw1*$pol*xml | awk '{print substr($1,12,length($1)-15)}'`
+  set f2m = `/usr/bin/ls */*iw2*$pol*xml | awk '{print substr($1,12,length($1)-15)}'`
+  set f3m = `/usr/bin/ls */*iw3*$pol*xml | awk '{print substr($1,12,length($1)-15)}'`
+  echo $f1m $f2m $f3m
   cd ../$3
-  set f1s = `ls */*iw1*$pol*xml | awk '{print substr($1,12,length($1)-15)}'`
-  set f2s = `ls */*iw2*$pol*xml | awk '{print substr($1,12,length($1)-15)}'`
-  set f3s = `ls */*iw3*$pol*xml | awk '{print substr($1,12,length($1)-15)}'`
+  pwd
+  set f1s = `/usr/bin/ls */*iw1*$pol*xml | awk '{print substr($1,12,length($1)-15)}'`
+  set f2s = `/usr/bin/ls */*iw2*$pol*xml | awk '{print substr($1,12,length($1)-15)}'`
+  set f3s = `/usr/bin/ls */*iw3*$pol*xml | awk '{print substr($1,12,length($1)-15)}'`
+  echo "$f1s $f2s $f3s"
   cd $pth
 
   set skip_master = `grep skip_master $5 | awk '{print $3}'`

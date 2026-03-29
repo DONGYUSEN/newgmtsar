@@ -68,6 +68,8 @@ else if($rng_samp_rate >= 24000000 && $rng_samp_rate < 72000000 || $SC == 7 ) th
   set rng = 2
 else if($SC == 14) then
   set rng = 2
+else if($SC == 12) then
+  set rng = 1
 else if($rng_samp_rate >= 72000000) then
   set rng = 4
 
@@ -78,7 +80,7 @@ else
 endif
 echo " range decimation is: " $rng
 
-
+echo "grd2xyz and SAT_llt2rat2.."
 if($SC == 11 || $SC == 12 || $SC == 14 ) then ## first modify
      gmt grd2xyz --FORMAT_FLOAT_OUT=%lf $2 -s | SAT_llt2rat2 $1 1 -bod > trans.dat  ## second modify 
      #gmt grd2xyz --FORMAT_FLOAT_OUT=%lf $2 -s | SAT_llt2rat $1 0 -bod  > trans.dat
@@ -109,23 +111,23 @@ if ($PRF < 1000) then
     rm topo_ra_tmp.grd coarse.grd mean.rat
   endif
 else
-
-  
   if ($mode == 0) then
     if($SC == 14) then # for DJ1
       echo "                     DJ1 high resolution DEM to topo_ra.grd"
-      gmt gmtconvert trans.dat -o0,1,2 -bi5d -bo3d | gmt blockmedian -R$region -I$rng/2 -bi3d -bo3d -r $V > temp.rat 
+      gmt gmtconvert trans.dat -o0,1,2 -bi5d -bo3d | gmt blockmedian -R$region -I$rng/2 -bi3d -bo3d -r -V > temp.rat 
       gmt surface temp.rat -R$region -I$rng/2 -bi3d -T$tension -N1000 -Gpixel.grd -r -Q >& tmp
-      echo "第一步完成！"
       set RR = `grep Hint tmp | head -1 | awk '{for(i=1;i<=NF;i++) print $i}' | grep /`
       if ("x$RR" == "x") then
-        gmt surface temp.rat -R$region -I$rng/2 -bi3d -T$tension -N1000 -Gpixel.grd -r $V
+        gmt surface temp.rat -R$region -I$rng/2 -bi3d -T$tension -N1000 -Gpixel.grd -r -V
+        #mls_surface temp.rat pixel.grd 0 $XMAX 0 $YMAX 1 2 $tension 8
       else
         echo "GMT surface & grdcut 处理中。"
         gmt surface temp.rat $RR -I$rng/2 -bi3d -T$tension -N1000 -Gpixel.grd -r $V
+        # mls_surface temp.rat pixel.grd 0 $XMAX 0 $YMAX 1 2 $tension 8
         gmt grdcut pixel.grd -R$region -Gtmp.grd
         mv tmp.grd pixel.grd
       endif  
+      echo "第一步完成！"
     else
       gmt gmtconvert trans.dat -o0,1,2 -bi5d -bo3d | gmt blockmedian -R$region -I$rng/4 -bi3d -bo3d -r $V > temp.rat 
       gmt surface temp.rat -R$region -I$rng/4 -bi3d -T$tension -N1000 -Gpixel.grd -r -Q >& tmp
