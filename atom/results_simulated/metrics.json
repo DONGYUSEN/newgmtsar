@@ -1,0 +1,22 @@
+{
+  "coh_threshold": 0.35,
+  "radar_wavelength_m": 0.0555171,
+  "fit": {
+    "a_rad_per_m": -0.00023653592591182216,
+    "b_rad": 0.8092603729561557
+  },
+  "meteo_used": true,
+  "valid_pixels": 388834,
+  "std_before_rad": 2.5441810089596353,
+  "std_after_rad": 2.2320016009220436,
+  "corr_phase_dem_before": -0.08151373977754252,
+  "corr_phase_dem_after": 0.10384588542975252,
+  "outputs": {
+    "before_tif": "/home/ysdong/Software/GMTSAR/atom/results_simulated/before_wrapped_phase.tif",
+    "after_tif": "/home/ysdong/Software/GMTSAR/atom/results_simulated/after_wrapped_phase.tif",
+    "before_png": "/home/ysdong/Software/GMTSAR/atom/results_simulated/before_wrapped_phase.png",
+    "after_png": "/home/ysdong/Software/GMTSAR/atom/results_simulated/after_wrapped_phase.png",
+    "elev_tif": "/home/ysdong/Software/GMTSAR/atom/results_simulated/atm_elevation_phase.tif",
+    "meteo_tif": "/home/ysdong/Software/GMTSAR/atom/results_simulated/atm_meteo_phase.tif"
+  }
+}

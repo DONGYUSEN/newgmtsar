@@ -8,7 +8,16 @@ install (PROGRAMS align.csh align_ALOS2_SCAN.csh align_ALOS_SLC.csh align_batch.
 	intf_batch.csh intf_batch_ALOS2_SCAN.csh intf_tops.csh landmask.csh landmask_ALOS2.csh m2s.csh
 	make_a_offset.csh make_dem.csh make_los_ascii.csh make_profile.csh merge_batch.csh
     merge_unwrap_geocode_tops.csh p2p_ALOS2_SCAN_Frame.csh p2p_ALOS2_SCAN_SLC.csh
-	p2p_ENVI.csh p2p_ERS.csh p2p_S1_TOPS.csh p2p_S1_TOPS_Frame.csh pre_proc.csh pre_proc_batch.csh
+	p2p_ENVI.csh p2p_ERS.csh p2p_S1_TOPS.csh p2p_S1_TOPS_Frame.csh
+	p2p_hook_stage2.csh p2p_hook_stage3.csh p2p_hook_stage4.csh
+	p2p_mode_strip.csh p2p_mode_tops.csh p2p_sat_entry.csh
+	p2p_processing.csh p2p_stage2_focus.csh p2p_stage2_align.csh p2p_stage2_tops.csh
+	p2p_validate_stage3.csh p2p_validate_stage4.csh pop_config.csh
+	p2p_sat_ALOS.csh p2p_sat_ALOS2.csh p2p_sat_ALOS2_SCAN.csh p2p_sat_ALOS_SLC.csh
+	p2p_sat_CSG.csh p2p_sat_CSK_RAW.csh p2p_sat_CSK_SLC.csh p2p_sat_DJ1.csh p2p_sat_ENVI.csh
+	p2p_sat_ENVI_SLC.csh p2p_sat_ERS.csh p2p_sat_GF3.csh p2p_sat_LT1.csh p2p_sat_RS2.csh
+	p2p_sat_S1_STRIP.csh p2p_sat_S1_TOPS.csh p2p_sat_TSX.csh
+	pre_proc.csh pre_proc_batch.csh
 	pre_proc_batch_ALOS2_SCAN.csh pre_proc_batch_ALOS_SLC.csh pre_proc_init.csh preproc_batch_tops.csh
 	preproc_batch_tops_esd.csh proj_ll2ra.csh proj_ll2ra_ascii.csh proj_model.csh proj_ra2ll.csh
 	proj_ra2ll_ascii.csh sarp.csh slc2amp.csh snaphu.csh snaphu_interp.csh stack.csh stack_corr.csh 

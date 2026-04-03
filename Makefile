@@ -13,7 +13,8 @@ DIRS		= gmtsar snaphu/src
 ORBITS_URL	= http://topex.ucsd.edu/gmtsar/tar/ORBITS.tar
 ORBITS		= ORBITS.tar
 
-all:	main preprocess
+all:	main
+	$(MAKE) preprocess
 
 help::
 		@grep '^#!' Makefile | cut -c3-
@@ -35,26 +36,26 @@ help::
 
 preprocess:
 	for d in $(PREPROCESSORS); do \
-		(cd preproc/$${d}_preproc; $(MAKE) all); \
+		(cd preproc/$${d}_preproc; $(MAKE) all) || exit $$?; \
 	done
 
 main:
 	for d in $(DIRS); do \
-		(cd $$d; $(MAKE) all); \
+		(cd $$d; $(MAKE) all) || exit $$?; \
 	done
 
 install:	install-main install-preproc
 
 install-preproc:
 	for d in $(PREPROCESSORS); do \
-		(cd preproc/$${d}_preproc; $(MAKE) install); \
+		(cd preproc/$${d}_preproc; $(MAKE) install) || exit $$?; \
 	done
 	$(INSTALL) -m 0644 preproc/ERS_preproc/scripts/virgin.PRM $(sharedir)
 	$(INSTALL) -m 0644 preproc/ENVI_preproc/scripts/virgin_envisat.PRM $(sharedir)
 
 install-main:
 	for d in $(DIRS); do \
-		(cd $$d; $(MAKE) install); \
+		(cd $$d; $(MAKE) install) || exit $$?; \
 	done
 	$(INSTALL) -d $(sharedir)
 	$(INSTALL) -d $(sharedir)/filters
@@ -79,29 +80,29 @@ uninstall:  uninstall-main uninstall-preproc
 
 uninstall-main:
 	for d in $(DIRS); do \
-		(cd $$d; $(MAKE) uninstall); \
+		(cd $$d; $(MAKE) uninstall) || exit $$?; \
 	done
 	rm -rf $(sharedir)
 
 uninstall-preproc:
 	for d in $(PREPROCESSORS); do \
-		(cd preproc/$${d}_preproc; $(MAKE) uninstall); \
+		(cd preproc/$${d}_preproc; $(MAKE) uninstall) || exit $$?; \
 	done
 
 clean:
 	for d in $(DIRS); do \
-		(cd $$d; $(MAKE) clean); \
+		(cd $$d; $(MAKE) clean) || exit $$?; \
 	done
 	for d in $(PREPROCESSORS); do \
-		(cd preproc/$${d}_preproc; $(MAKE) clean); \
+		(cd preproc/$${d}_preproc; $(MAKE) clean) || exit $$?; \
 	done
 
 spotless:
 	for d in $(DIRS); do \
-		(cd $$d; $(MAKE) spotless); \
+		(cd $$d; $(MAKE) spotless) || exit $$?; \
 	done
 	for d in $(PREPROCESSORS); do \
-		(cd preproc/$${d}_preproc; $(MAKE) spotless); \
+		(cd preproc/$${d}_preproc; $(MAKE) spotless) || exit $$?; \
 	done
 	rm -rf bin share
 	$(RM) gmtsar/csh/gmtsar_sharedir.csh \

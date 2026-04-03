@@ -80,6 +80,16 @@ void set_defaults(struct xcorr *xc) {
 	xc->astretcha = 0.0;    /* azimuth stretch partameter */
 	xc->interp_flag = 1;    /* interpolate or not ? */
 	xc->interp_factor = 16; /* interpolatation factor */
+
+	/* reusable read buffers (allocated lazily in read_xcorr_data) */
+	xc->tmp_m = NULL;
+	xc->tmp_s = NULL;
+	xc->tmp2_m = NULL;
+	xc->tmp2_s = NULL;
+	xc->tmp_m_cap = 0;
+	xc->tmp_s_cap = 0;
+	xc->tmp2_m_cap = 0;
+	xc->tmp2_s_cap = 0;
 }
 /*-------------------------------------------------------*/
 /* reads options 				*/
@@ -296,6 +306,9 @@ void handle_prm(void *API, char **argv, struct xcorr *xc, int nfiles) {
 	}
 	fprintf(stderr, " %d %d %d %d %d %d %f\n", xc->m_nx, xc->m_ny, xc->s_nx, xc->s_ny, xc->x_offset, xc->y_offset, xc->astretcha);
 
+	for (i = 0; i < nfiles; i++)
+		free(filename[i]);
+	free(filename);
 	free(r);
 }
 /*---------------------------------------------------------------------------*/

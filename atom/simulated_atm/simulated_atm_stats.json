@@ -1,0 +1,22 @@
+{
+  "coh_threshold": 0.35,
+  "sigma_px": 60.0,
+  "phase_scale": 1.0,
+  "radar_wavelength_m": 0.0555171,
+  "valid_pixels": 388834,
+  "phi_sim_rad_p05_p95": [
+    -1.9630371041177908,
+    1.0045728120917705
+  ],
+  "delta_ztd_m_min_max": [
+    -0.005075978982888629,
+    0.01681770416972696
+  ],
+  "outputs": {
+    "master": "/home/ysdong/Software/GMTSAR/atom/simulated_atm/simulated_master_ztd.tif",
+    "slave": "/home/ysdong/Software/GMTSAR/atom/simulated_atm/simulated_slave_ztd.tif",
+    "delta": "/home/ysdong/Software/GMTSAR/atom/simulated_atm/simulated_delta_ztd.tif",
+    "phase": "/home/ysdong/Software/GMTSAR/atom/simulated_atm/simulated_atm_phase_for_report.tif"
+  },
+  "note": "Simulated product for presentation only; not physically retrieved atmospheric data."
+}

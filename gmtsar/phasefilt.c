@@ -27,9 +27,6 @@
  *
  *-------------------------------------------------------------------------------------
  */
-int verbose;
-int debug;
-
 int print_cpatch(int nx, int ny, struct FCOMPLEX *m) {
 	int i;
 	for (i = 0; i < nx * ny; i++) {

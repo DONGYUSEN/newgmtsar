@@ -6,22 +6,22 @@ DIRS	= lib src_swath
 
 all:
 	for d in $(DIRS); do \
-		(cd $$d; $(MAKE) all); \
+		(cd $$d; $(MAKE) all) || exit $$?; \
 	done
 
 install:	all
 	for d in $(DIRS); do \
-		(cd $$d; $(MAKE) install); \
+		(cd $$d; $(MAKE) install) || exit $$?; \
 	done
 
 uninstall:
 	for d in $(DIRS); do \
-		(cd $$d; $(MAKE) uninstall); \
+		(cd $$d; $(MAKE) uninstall) || exit $$?; \
 	done
 
 clean:
 	for d in $(DIRS); do \
-		(cd $$d; $(MAKE) clean); \
+		(cd $$d; $(MAKE) clean) || exit $$?; \
 	done
 
 spotless:	clean

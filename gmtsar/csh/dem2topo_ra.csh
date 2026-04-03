@@ -10,6 +10,43 @@
 #
 alias rm 'rm -f'
 unset noclobber
+
+# Avoid Conda/system mixed runtime libraries causing GMT/GDAL crashes.
+if (-x /usr/bin/gmt) then
+  alias gmt /usr/bin/gmt
+endif
+if ($?LD_LIBRARY_PATH) then
+  set _gmtsar_ld_clean = ""
+  foreach _gmtsar_ldp (`echo "$LD_LIBRARY_PATH" | tr ':' ' '`)
+    if ("$_gmtsar_ldp" !~ "*miniforge3*" && "$_gmtsar_ldp" !~ "*mambaforge*" && "$_gmtsar_ldp" !~ "*anaconda*" && "$_gmtsar_ldp" !~ "*conda*") then
+      if ("x$_gmtsar_ld_clean" == "x") then
+        set _gmtsar_ld_clean = "$_gmtsar_ldp"
+      else
+        set _gmtsar_ld_clean = "${_gmtsar_ld_clean}:$_gmtsar_ldp"
+      endif
+    endif
+  end
+  if ("x$_gmtsar_ld_clean" == "x") then
+    unsetenv LD_LIBRARY_PATH
+  else
+    setenv LD_LIBRARY_PATH "$_gmtsar_ld_clean"
+  endif
+endif
+if ($?GDAL_DRIVER_PATH) then
+  if ("$GDAL_DRIVER_PATH" =~ "*miniforge3*" || "$GDAL_DRIVER_PATH" =~ "*mambaforge*" || "$GDAL_DRIVER_PATH" =~ "*anaconda*" || "$GDAL_DRIVER_PATH" =~ "*conda*") then
+    unsetenv GDAL_DRIVER_PATH
+  endif
+endif
+if ($?GDAL_DATA) then
+  if ("$GDAL_DATA" =~ "*miniforge3*" || "$GDAL_DATA" =~ "*mambaforge*" || "$GDAL_DATA" =~ "*anaconda*" || "$GDAL_DATA" =~ "*conda*") then
+    unsetenv GDAL_DATA
+  endif
+endif
+if ($?PROJ_LIB) then
+  if ("$PROJ_LIB" =~ "*miniforge3*" || "$PROJ_LIB" =~ "*mambaforge*" || "$PROJ_LIB" =~ "*anaconda*" || "$PROJ_LIB" =~ "*conda*") then
+    unsetenv PROJ_LIB
+  endif
+endif
 #
 if ($#argv != 3 && $#argv != 2 ) then
  echo " "
@@ -69,7 +106,7 @@ else if($rng_samp_rate >= 24000000 && $rng_samp_rate < 72000000 || $SC == 7 ) th
 else if($SC == 14) then
   set rng = 2
 else if($SC == 12) then
-  set rng = 1
+  set rng = 4
 else if($rng_samp_rate >= 72000000) then
   set rng = 4
 

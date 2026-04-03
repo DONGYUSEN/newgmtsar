@@ -1,7 +1,7 @@
 #include "image_sio.h"
 #include "lib_functions.h"
 
-int ledflag;
+extern int ledflag;
 /* reads options 				*/
 /* start with third arguement			*/
 void parse_ALOS_commands(int na, char **a, char *USAGE, struct PRM *prm) {

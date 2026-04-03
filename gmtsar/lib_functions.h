@@ -67,6 +67,7 @@ void read_data(struct xcorr xc);
 void read_complex_short2float(FILE *f, float *d, int iy, int jx, int npx, int npy, int nx);
 void read_optional_args(void *API, int argc, char **argv, struct PRM *tp, int *topoflag, struct PRM *mp, int *modelflag, char *imag_filename, char *real_filename);
 void read_xcorr_data(struct xcorr *xc, int iloc);
+void free_xcorr_read_buffers(struct xcorr *xc);
 void rmpatch(fcomplex **data, int nrows, double delr, double fd, double fdd, double fddd);
 void rng_cmp(void *API, int ranfft, fcomplex *data, fcomplex *ref);
 void rng_ref(void *API, int ranfft, float delr, fcomplex *ref1);

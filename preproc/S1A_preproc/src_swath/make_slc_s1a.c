@@ -17,6 +17,7 @@
 #include "stateV.h"
 #include "tiffio.h"
 #include <math.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -108,10 +109,10 @@ int main(int argc, char **argv) {
 
 int write_slc(TIFF *tif, FILE *slc) {
 
-	uint32 width, height, widthi;
-	uint32 i, j;
-	uint16 s, nsamples;
-	uint16 *buf;
+	uint32_t width, height, widthi;
+	uint32_t i, j;
+	uint16_t s, nsamples;
+	uint16_t *buf;
 	short *tmp;
 
 	// get the width and the height of the file, make width dividable by 4
@@ -120,9 +121,9 @@ int write_slc(TIFF *tif, FILE *slc) {
 	width = widthi - widthi % 4;
 	// printf("%d %d \n",width,height);
 
-	buf = (uint16 *)_TIFFmalloc(TIFFScanlineSize(tif));
+	buf = (uint16_t *)_TIFFmalloc(TIFFScanlineSize(tif));
 	tmp = (short *)malloc(width * 2 * sizeof(short));
-	printf("Writing SLC..Image Size: %d X %d...\n", width, height);
+	printf("Writing SLC..Image Size: %u X %u...\n", (unsigned int)width, (unsigned int)height);
 
 	TIFFGetField(tif, TIFFTAG_SAMPLESPERPIXEL, &nsamples);
 	for (s = 0; s < nsamples; s++) {
@@ -188,7 +189,6 @@ int pop_led(tree *xml_tree, state_vector *sv) {
 
 int pop_prm(struct PRM *prm, tree *xml_tree, char *file_name) {
 	char tmp_c[200];
-	double tmp_d;
 	int tmp_i;
 	double c_speed = 299792458.0;
 

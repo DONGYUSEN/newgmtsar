@@ -66,6 +66,14 @@ struct xcorr {
 	FILE *data2;             /* data file 2 */
 	FILE *param;             /* input parameters file */
 	FILE *file;              /* output file (offsets) */
+	short *tmp_m;            /* reusable read buffer for master complex short / 主影像复数短整型读取缓存 */
+	short *tmp_s;            /* reusable read buffer for aligned complex short / 辅影像复数短整型读取缓存 */
+	float *tmp2_m;           /* reusable read buffer for master float / 主影像浮点读取缓存 */
+	float *tmp2_s;           /* reusable read buffer for aligned float / 辅影像浮点读取缓存 */
+	size_t tmp_m_cap;        /* number of short elements allocated in tmp_m / tmp_m已分配short元素数 */
+	size_t tmp_s_cap;        /* number of short elements allocated in tmp_s / tmp_s已分配short元素数 */
+	size_t tmp2_m_cap;       /* number of float elements allocated in tmp2_m / tmp2_m已分配float元素数 */
+	size_t tmp2_s_cap;       /* number of float elements allocated in tmp2_s / tmp2_s已分配float元素数 */
 	char param_name[128];
 	char data1_name[128];
 	char data2_name[128];

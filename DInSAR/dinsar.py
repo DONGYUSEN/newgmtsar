@@ -831,6 +831,11 @@ def main() -> int:
         action="store_true",
         help="当 registration-esd 启用时，即便 ESD 结果 reliability=low 也强制应用",
     )
+    parser.add_argument(
+        "--stop-after-wrapped-phase",
+        action="store_true",
+        help="仅处理到 wrapped phase（含配准/干涉/滤波），跳过 snaphu 解缠与地理编码",
+    )
     parser.add_argument("--force", action="store_true", help="强制重跑各步骤（默认存在结果则复用）")
     args = parser.parse_args()
     try:
@@ -1278,6 +1283,10 @@ def main() -> int:
         wrapped_phase.tofile(str(wrapped_both_phase_bin))
         _create_raw_vrt(wrapped_both_phase_bin, shape=shape, complex_data=False)
     _find_required(wrapped_both_phase_bin, "snaphu 包裹相位（flat+topo）")
+
+    if bool(args.stop_after_wrapped_phase):
+        print("按 --stop-after-wrapped-phase 设置，已在 wrapped phase 阶段停止。")
+        return 0
 
     # 6.4) 对去平地+地形(并经 Goldstein)后的相位执行 snaphu 解缠
     if args.force or (not unwrap_bin.exists()) or (not los_m_bin.exists()):

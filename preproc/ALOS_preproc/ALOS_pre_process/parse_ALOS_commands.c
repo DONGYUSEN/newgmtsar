@@ -3,7 +3,7 @@
 
 /* reads options 				*/
 /* start with third arguement			*/
-int ledflag;
+extern int ledflag;
 void parse_ALOS_commands(int na, char **a, char *USAGE, struct PRM *prm) {
 	int n;
 	tbias = 0.;

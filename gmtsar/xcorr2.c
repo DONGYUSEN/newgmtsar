@@ -1,422 +1,759 @@
-/*
- OpenMP + FFTW-safe modifications for xcorr:
 
- - Call fftw_init_threads() in main once.
- - In the OpenMP parallel region, each thread calls fftw_plan_with_nthreads(1)
-   before any plan creation to avoid internal multi-threading inside FFTW
-   per OpenMP thread.
- - Surround calls that likely create FFTW plans or perform complex FFT work
-   (do_freq_corr, do_highres_corr) with an omp critical section to avoid
-   concurrent plan creation / memory races in FFTW.
- - Allocate per-thread data buffers and only replace the buffers that must
-   be private (c1,c2,c3,i1,i2,ritmp). Keep other pointers (corr, md, cd_exp, file, d1, d2, etc.)
-   pointing to the shared xc to avoid accidental frees of shared memory.
- - Free only the per-thread buffers created here.
-
- Notes:
- - This approach trades some concurrency (the FFT-plan-related calls are
-   serialized) for stability. After verifying correctness, further tuning
-   (e.g., creating per-thread cached FFTW plans at program startup) can
-   improve performance.
-*/
-
-#include "gmtsar.h"
-#ifdef _OPENMP
-#include <omp.h>
-#endif
-#include <fftw3.h>
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <math.h>
+#include <limits.h>
 #include <string.h>
-#include <time.h>
+#include <complex.h>
+#include <pthread.h>
+#include <fftw3.h>
+#include <glib.h>
+#include <unistd.h>
+#include <stdbool.h>
+#include <sys/types.h>
+#include <stdint.h>
+#include <errno.h>
 
-/* USAGE omitted here for brevity; keep your original USAGE string */
-/* original USAGE string omitted for brevity in this header-only snippet */
-char *USAGE = "xcorr [GMTSAR] - Compute 2-D cross-correlation of two images\n\n"
-              "\nUsage: xcorr master.PRM aligned.PRM [-time] [-real] [-freq] [-nx n] [-ny "
-              "n] [-xsearch xs] [-ysearch ys]\n"
-              "master.PRM     	PRM file for reference image\n"
-              "aligned.PRM     	 	PRM file of secondary image\n"
-              "-time      		use time cross-correlation\n"
-              "-freq      		use frequency cross-correlation (default)\n"
-              "-real      		read float numbers instead of complex numbers\n"
-              "-noshift  		ignore ashift and rshift in prm file (set to 0)\n"
-              "-nx  nx    		number of locations in x (range) direction "
-              "(int)\n"
-              "-ny  ny    		number of locations in y (azimuth) direction "
-              "(int)\n"
-              "-nointerp     		do not interpolate correlation function\n"
-              "-range_interp ri  	interpolate range by ri (power of two) [default: 2]\n"
-              "-norange     		do not range interpolate \n"
-              "-xsearch xs		search window size in x (range) direction (int "
-              "power of 2 [32 64 128 256])\n"
-              "-ysearch ys		search window size in y (azimuth) direction "
-              "(int power of 2 [32 64 128 256])\n"
-              "-interp  factor    	interpolate correlation function by factor "
-              "(int) [default, 16]\n"
-              "-v			verbose\n"
-              "output: \n freq_xcorr.dat (default) \n time_xcorr.dat (if -time option))\n"
-              "\nuse fitoffset.csh to convert output to PRM format\n"
-              "\nExample:\n"
-              "xcorr IMG-HH-ALPSRP075880660-H1.0__A.PRM "
-              "IMG-HH-ALPSRP129560660-H1.0__A.PRM -nx 20 -ny 50 \n"
-              "xcorr file1.grd file2.grd -nx 20 -ny 50 (takes grids with real numbers)\n";
+#include "xcorr2.h"
+#include "xcorr2_args.h"
 
+struct st_corr_thread_data {
+    const struct st_xcorr *xc;
+    complex double *c1;
+    complex double *c2;
+    double xoff, yoff;
+    int loc_x, loc_y;
+    double corr;
+    volatile gint done;
+};
 
+static unsigned long long detect_available_memory_bytes(void) {
+    FILE *f;
+    char line[256];
+    unsigned long long kb;
+    long pages, page_size;
 
-/* ... keep do_range_interpolate and assign_values as in your code ... */
-/* I'll include them unchanged (copy from your original) */
+    f = fopen("/proc/meminfo", "r");
+    if (f != NULL) {
+        while (fgets(line, sizeof(line), f) != NULL) {
+            if (sscanf(line, "MemAvailable: %llu kB", &kb) == 1) {
+                fclose(f);
+                return kb * 1024ULL;
+            }
+        }
+        fclose(f);
+    }
 
-int do_range_interpolate(void *API, struct FCOMPLEX *c, int nx, int ri, struct FCOMPLEX *work) {
-	int i;
+#ifdef _SC_AVPHYS_PAGES
+    pages = sysconf(_SC_AVPHYS_PAGES);
+    page_size = sysconf(_SC_PAGESIZE);
+    if (pages > 0 && page_size > 0)
+        return (unsigned long long)pages * (unsigned long long)page_size;
+#endif
 
-	/* interpolate c and put into work */
-	fft_interpolate_1d(API, c, nx, work, ri);
+    pages = sysconf(_SC_PHYS_PAGES);
+    page_size = sysconf(_SC_PAGESIZE);
+    if (pages > 0 && page_size > 0)
+        return ((unsigned long long)pages * (unsigned long long)page_size) / 2ULL;
 
-	/* replace original with interpolated (only half) */
-	for (i = 0; i < nx; i++) {
-		c[i].r = work[i + nx / 2].r;
-		c[i].i = work[i + nx / 2].i;
-	}
-
-	return (EXIT_SUCCESS);
+    return 0;
 }
 
-void assign_values(void *API, struct xcorr *xc, int iloc) {
-	int i, j, k, sx, mx;
-	double mean1, mean2;
+static unsigned long long estimate_worker_peak_memory_bytes(const struct st_xcorr *xc) {
+    unsigned long long nx_corr, ny_corr, nx_win, ny_win;
+    unsigned long long p, fft_cells, corr_cells;
+    unsigned long long bytes_window, bytes_interp_peak, bytes_freq_peak;
+    unsigned long long ri;
 
-	/* master and aligned x offsets */
-	mx = xc->loc[iloc].x - xc->npx / 2;
-	sx = xc->loc[iloc].x + xc->x_offset - xc->npx / 2;
+    nx_corr = (unsigned long long)xc->xsearch * 2ULL;
+    ny_corr = (unsigned long long)xc->ysearch * 2ULL;
+    nx_win = nx_corr * 2ULL;
+    ny_win = ny_corr * 2ULL;
+    p = nx_win * ny_win;
+    fft_cells = ny_win * (nx_win/2ULL + 1ULL);
+    corr_cells = nx_corr * ny_corr;
+    ri = (xc->ri > 1) ? (unsigned long long)xc->ri : 1ULL;
 
-	for (i = 0; i < xc->npy; i++) {
-		for (j = 0; j < xc->npx; j++) {
-			k = i * xc->npx + j;
+    bytes_window = 2ULL * p * sizeof(complex double);  // c1 + c2
 
-			xc->c3[k].i = xc->c3[k].r = 0.0f;
+    if (xc->ri > 1) {
+        // peak while computing interp2 while interp1 is still alive:
+        // c1 + c2 + interp1 + (in_fft + out_fft + out_for_interp2)
+        bytes_interp_peak =
+            bytes_window +
+            (p * ri) * sizeof(complex double) +
+            (p + 2ULL * p * ri) * sizeof(complex double);
+    } else {
+        bytes_interp_peak = bytes_window;
+    }
 
-			xc->c1[k].r = xc->d1[i * xc->m_nx + mx + j].r;
-			xc->c1[k].i = xc->d1[i * xc->m_nx + mx + j].i;
+    // peak around frequency correlation:
+    // c1r + c2r + c1r_fft + c2r_fft + c3r + corr_slice
+    bytes_freq_peak =
+        2ULL * p * sizeof(double) +
+        2ULL * fft_cells * sizeof(complex double) +
+        p * sizeof(double) +
+        corr_cells * sizeof(double);
 
-			xc->c2[k].r = xc->d2[i * xc->s_nx + sx + j].r;
-			xc->c2[k].i = xc->d2[i * xc->s_nx + sx + j].i;
-		}
-	}
-
-	/* range interpolate */
-	if (xc->ri > 1) {
-		for (i = 0; i < xc->npy; i++) {
-			do_range_interpolate(API, &xc->c1[i * xc->npx], xc->npx, xc->ri, xc->ritmp);
-			do_range_interpolate(API, &xc->c2[i * xc->npx], xc->npx, xc->ri, xc->ritmp);
-		}
-	}
-
-	/* convert to amplitude and demean */
-	mean1 = mean2 = 0.0;
-	for (i = 0; i < xc->npy * xc->npx; i++) {
-		xc->c1[i].r = Cabs(xc->c1[i]);
-		xc->c1[i].i = 0.0f;
-
-		xc->c2[i].r = Cabs(xc->c2[i]);
-		xc->c2[i].i = 0.0f;
-
-		mean1 += xc->c1[i].r;
-		mean2 += xc->c2[i].r;
-	}
-
-	mean1 /= (double)(xc->npy * xc->npx);
-	mean2 /= (double)(xc->npy * xc->npx);
-
-	for (i = 0; i < xc->npy * xc->npx; i++) {
-		xc->c1[i].r = xc->c1[i].r - (float)mean1;
-		xc->c2[i].r = xc->c2[i].r - (float)mean2;
-	}
-
-	/* apply mask */
-	for (i = 0; i < xc->npy * xc->npx; i++) {
-		xc->c1[i].i = xc->c2[i].i = 0.0f;
-		xc->c2[i].r = xc->c2[i].r * (float)xc->mask[i];
-
-		xc->i1[i] = (int)(xc->c1[i].r);
-		xc->i2[i] = (int)(xc->c2[i].r);
-	}
-
-	if (debug)
-		fprintf(stderr, " mean %lf\n", mean1);
-	if (debug)
-		fprintf(stderr, " mean %lf\n", mean2);
+    return (bytes_interp_peak > bytes_freq_peak) ? bytes_interp_peak : bytes_freq_peak;
 }
 
-/* allocate_arrays, make_mask kept as in original */
-void make_mask(struct xcorr *xc) {
-	int i, j, imask;
-	imask = 0;
+static long auto_tune_threads(const struct st_xcorr *xc, long cpu_target_threads) {
+    unsigned long long avail_bytes, worker_peak, usable_bytes;
+    unsigned long long queued_window_bytes, per_thread_effective;
+    double window_scale, safety_factor;
+    long by_memory;
+    long tuned;
 
-	for (i = 0; i < xc->npy; i++) {
-		for (j = 0; j < xc->npx; j++) {
-			xc->mask[i * xc->npx + j] = 1;
-			if ((i < xc->ysearch) || (i >= (xc->npy - xc->ysearch))) {
-				xc->mask[i * xc->npx + j] = imask;
-			}
-			if ((j < xc->xsearch) || (j >= (xc->npx - xc->xsearch))) {
-				xc->mask[i * xc->npx + j] = imask;
-			}
-		}
-	}
+    tuned = cpu_target_threads;
+    if (tuned < 1) tuned = 1;
+
+    avail_bytes = detect_available_memory_bytes();
+    worker_peak = estimate_worker_peak_memory_bytes(xc);
+
+    // queue_limit is 1, so one extra queued task may hold c1+c2 windows.
+    queued_window_bytes =
+        2ULL * (unsigned long long)(xc->xsearch * 4ULL) *
+        (unsigned long long)(xc->ysearch * 4ULL) * sizeof(complex double);
+
+    // Dynamic safety factor:
+    // keep a margin for FFTW/allocator overhead while avoiding excessive throttling.
+    window_scale = ((double)xc->xsearch * (double)xc->ysearch) / (256.0 * 256.0);
+    if (window_scale < 1.0) window_scale = 1.0;
+    safety_factor = 1.4 + 0.6 * sqrt(window_scale);
+
+    per_thread_effective =
+        (unsigned long long)((long double)worker_peak * safety_factor) + queued_window_bytes;
+    if (avail_bytes == 0 || per_thread_effective == 0)
+        return tuned;
+
+    // keep some free headroom for OS/page cache and neighboring processes.
+    usable_bytes = (unsigned long long)((long double)avail_bytes * 0.85L);
+    by_memory = (long)(usable_bytes / per_thread_effective);
+    if (by_memory < 1) {
+        fprintf(stderr,
+                "Estimated memory is insufficient for one worker (need about %.2f GB per worker). "
+                "Reduce xsearch/ysearch or use -norange/-nointerp.\n",
+                per_thread_effective / (1024.0 * 1024.0 * 1024.0));
+        exit(EXIT_FAILURE);
+    }
+
+    fprintf(stderr,
+            "Auto thread caps: cpu=%ld, memory=%ld (avail %.2f GB, est %.2f GB/thread, safety %.2f)\n",
+            tuned, by_memory,
+            avail_bytes / (1024.0 * 1024.0 * 1024.0),
+            per_thread_effective / (1024.0 * 1024.0 * 1024.0),
+            safety_factor);
+
+    if (by_memory < tuned) {
+        fprintf(stderr,
+                "Auto-tuning threads: CPU cap=%ld, memory cap=%ld, using %ld.\n",
+                tuned, by_memory, by_memory);
+        tuned = by_memory;
+    }
+
+    return tuned;
 }
 
-void allocate_arrays(struct xcorr *xc) {
-	int nx, ny, nx_exp, ny_exp;
+static void compute_axis_positions(
+        int *out, int n,
+        int half_win,
+        int master_len, int slave_len,
+        double scale, double offset,
+        const char *axis_name) {
+    double master_lower, master_upper;
+    double lower, upper;
+    double s_lower, s_upper;
+    static bool warned_x_overlap = false;
+    static bool warned_y_overlap = false;
 
-	xc->d1 = (struct FCOMPLEX *)malloc(xc->m_nx * xc->npy * sizeof(struct FCOMPLEX));
-	xc->d2 = (struct FCOMPLEX *)malloc(xc->s_nx * xc->npy * sizeof(struct FCOMPLEX));
+    if (n < 1) {
+        fprintf(stderr, "Invalid %s sample count: %d\n", axis_name, n);
+        exit(EXIT_FAILURE);
+    }
 
-	xc->i1 = (int *)malloc(xc->npx * xc->npy * sizeof(int));
-	xc->i2 = (int *)malloc(xc->npx * xc->npy * sizeof(int));
+    if (scale <= 0.0) {
+        fprintf(stderr, "Invalid %s scale factor: %.6f\n", axis_name, scale);
+        exit(EXIT_FAILURE);
+    }
 
-	xc->c1 = (struct FCOMPLEX *)malloc(xc->npx * xc->npy * sizeof(struct FCOMPLEX));
-	xc->c2 = (struct FCOMPLEX *)malloc(xc->npx * xc->npy * sizeof(struct FCOMPLEX));
-	xc->c3 = (struct FCOMPLEX *)malloc(xc->npx * xc->npy * sizeof(struct FCOMPLEX));
+    master_lower = half_win;
+    master_upper = master_len - half_win;
+    if (master_lower > master_upper) {
+        fprintf(stderr,
+                "No feasible %s centers: master dimension too small for window size.\n",
+                axis_name);
+        exit(EXIT_FAILURE);
+    }
 
-	xc->ritmp = (struct FCOMPLEX *)malloc(xc->ri * xc->npx * sizeof(struct FCOMPLEX));
-	xc->mask = (short *)malloc(xc->npx * xc->npy * sizeof(short));
+    lower = master_lower;
+    upper = master_upper;
 
-	/* this is size of correlation patch */
-	xc->corr = (double *)malloc(2 * xc->ri * (xc->nxc) * (xc->nyc) * sizeof(double));
+    s_lower = (half_win - offset) / scale;
+    s_upper = (slave_len - half_win - offset) / scale;
+    if (s_lower > s_upper) {
+        double t = s_lower;
+        s_lower = s_upper;
+        s_upper = t;
+    }
 
-	if (xc->interp_flag == 1) {
-		nx = 2 * xc->n2x;
-		ny = 2 * xc->n2y;
-		nx_exp = nx * (xc->interp_factor);
-		ny_exp = ny * (xc->interp_factor);
-		xc->md = (struct FCOMPLEX *)malloc(nx * ny * sizeof(struct FCOMPLEX));
-		xc->cd_exp = (struct FCOMPLEX *)malloc(nx_exp * ny_exp * sizeof(struct FCOMPLEX));
-	}
+    if (s_lower > lower) lower = s_lower;
+    if (s_upper < upper) upper = s_upper;
+
+    if (lower > upper) {
+        bool *warned = NULL;
+
+        if (strcmp(axis_name, "x") == 0)
+            warned = &warned_x_overlap;
+        else if (strcmp(axis_name, "y") == 0)
+            warned = &warned_y_overlap;
+
+        lower = master_lower;
+        upper = master_upper;
+
+        if (warned == NULL || !(*warned)) {
+            fprintf(stderr,
+                    "No strict feasible %s centers under shift/stretch constraints. "
+                    "Using overlap mode to preserve requested sample count.\n",
+                    axis_name);
+            if (warned != NULL)
+                *warned = true;
+        }
+    }
+
+    if (n == 1) {
+        out[0] = (int)llround((lower + upper) / 2.0);
+        return;
+    }
+
+    double step = (upper - lower) / (n - 1);
+    for (int i=0; i<n; i++)
+        out[i] = (int)llround(lower + i * step);
 }
 
-/* the modified do_correlation with FFTW-thread-safety measures */
-void do_correlation(void *API, struct xcorr *xc) {
-	int i, j, iloc, istep;
+static int clamp_center(int center, int half_win, int axis_len, int *clamp_count) {
+    int min_center = half_win;
+    int max_center = axis_len - half_win;
 
-	/* opportunity for multiple processors */
-	istep = 1;
+    if (center < min_center) {
+        if (clamp_count != NULL) (*clamp_count)++;
+        return min_center;
+    }
 
-	/* allocate arrays   			*/
-	allocate_arrays(xc);
+    if (center > max_center) {
+        if (clamp_count != NULL) (*clamp_count)++;
+        return max_center;
+    }
 
-	/* make mask 				*/
-	make_mask(xc);
-
-	/* prepare per-thread buffers */
-	int npx = xc->npx;
-	int npy = xc->npy;
-	int nloc_patch = npx * npy;
-	int ri_sz = xc->ri * npx;
-
-	int nthreads = 1;
-#ifdef _OPENMP
-	nthreads = omp_get_max_threads();
-#endif
-
-	struct FCOMPLEX *c1_thr = NULL;
-	struct FCOMPLEX *c2_thr = NULL;
-	struct FCOMPLEX *c3_thr = NULL;
-	struct FCOMPLEX *ritmp_thr = NULL;
-	int *i1_thr = NULL;
-	int *i2_thr = NULL;
-
-	if (nthreads > 1) {
-		c1_thr = (struct FCOMPLEX *)malloc((size_t)nthreads * nloc_patch * sizeof(struct FCOMPLEX));
-		c2_thr = (struct FCOMPLEX *)malloc((size_t)nthreads * nloc_patch * sizeof(struct FCOMPLEX));
-		c3_thr = (struct FCOMPLEX *)malloc((size_t)nthreads * nloc_patch * sizeof(struct FCOMPLEX));
-
-		i1_thr = (int *)malloc((size_t)nthreads * nloc_patch * sizeof(int));
-		i2_thr = (int *)malloc((size_t)nthreads * nloc_patch * sizeof(int));
-
-		ritmp_thr = (struct FCOMPLEX *)malloc((size_t)nthreads * ri_sz * sizeof(struct FCOMPLEX));
-
-		if (!(c1_thr && c2_thr && c3_thr && i1_thr && i2_thr && ritmp_thr)) {
-			fprintf(stderr, "Warning: failed to allocate per-thread buffers, continuing single-threaded.\n");
-			if (c1_thr) free(c1_thr);
-			if (c2_thr) free(c2_thr);
-			if (c3_thr) free(c3_thr);
-			if (i1_thr) free(i1_thr);
-			if (i2_thr) free(i2_thr);
-			if (ritmp_thr) free(ritmp_thr);
-			nthreads = 1;
-		}
-	}
-
-	iloc = 0;
-	for (i = 0; i < xc->nyl; i += istep) {
-
-		/* read in data for each row (serialized) */
-		read_xcorr_data(xc, iloc);
-
-#ifdef _OPENMP
-#pragma omp parallel for private(j) schedule(static) shared(xc, c1_thr, c2_thr, c3_thr, i1_thr, i2_thr, ritmp_thr) if(nthreads>1)
-#endif
-		for (j = 0; j < xc->nxl; j++) {
-			int tid = 0;
-#ifdef _OPENMP
-			tid = omp_get_thread_num();
-			/* ensure FFTW in this OpenMP thread uses only 1 internal thread */
-			fftwf_plan_with_nthreads(1);
-#endif
-			int local_iloc = iloc + j;
-
-			/* local shallow copy of xc */
-			struct xcorr local_xc = *xc;
-
-			if (nthreads > 1) {
-				local_xc.c1 = &c1_thr[(size_t)tid * nloc_patch];
-				local_xc.c2 = &c2_thr[(size_t)tid * nloc_patch];
-				local_xc.c3 = &c3_thr[(size_t)tid * nloc_patch];
-
-				local_xc.i1 = &i1_thr[(size_t)tid * nloc_patch];
-				local_xc.i2 = &i2_thr[(size_t)tid * nloc_patch];
-
-				local_xc.ritmp = &ritmp_thr[(size_t)tid * ri_sz];
-			} else {
-				/* single-threaded: use the existing buffers in xc */
-				local_xc.c1 = xc->c1;
-				local_xc.c2 = xc->c2;
-				local_xc.c3 = xc->c3;
-
-				local_xc.i1 = xc->i1;
-				local_xc.i2 = xc->i2;
-
-				local_xc.ritmp = xc->ritmp;
-			}
-
-			/* d1 and d2 contain the row data read earlier and are read-only here */
-			local_xc.d1 = xc->d1;
-			local_xc.d2 = xc->d2;
-
-			/* mask is shared and read-only */
-			local_xc.mask = xc->mask;
-
-			if (debug)
-				fprintf(stderr, " initial: iloc %d (%d,%d) (thread %d)\n", local_iloc, xc->loc[local_iloc].x, xc->loc[local_iloc].y, tid);
-
-			/* copy / prepare per-thread buffers */
-			assign_values(API, &local_xc, local_iloc);
-
-			if (debug)
-				print_complex(local_xc.c1, local_xc.npy, local_xc.npx, 1);
-			if (debug)
-				print_complex(local_xc.c2, local_xc.npy, local_xc.npx, 1);
-
-			/* time domain correlation can be called without serializing FFT plan creation */
-			if (local_xc.corr_flag < 2)
-				do_time_corr(&local_xc, local_iloc);
-
-			/* Frequency-domain correlation and high-res interpolation may create FFTW plans.
-			   Serialize these calls to avoid concurrent plan creation issues in FFTW. */
-#ifdef _OPENMP
-#pragma omp critical(fftwf_plan_create)
-#endif
-			{
-				if (local_xc.corr_flag == 2)
-					do_freq_corr(API, &local_xc, local_iloc);
-
-				if (local_xc.interp_flag == 1)
-					do_highres_corr(API, &local_xc, local_iloc);
-			}
-
-			/* write out results - protect file writes */
-#ifdef _OPENMP
-#pragma omp critical(write_results)
-#endif
-			{
-				print_results(&local_xc, local_iloc);
-			}
-		} /* end of x iloc loop */
-
-		iloc += xc->nxl; /* advance to start of next row's locations */
-	}     /* end of y iloc loop */
-
-	/* free per-thread buffers */
-	if (c1_thr) free(c1_thr);
-	if (c2_thr) free(c2_thr);
-	if (c3_thr) free(c3_thr);
-	if (i1_thr) free(i1_thr);
-	if (i2_thr) free(i2_thr);
-	if (ritmp_thr) free(ritmp_thr);
+    return center;
 }
 
-/* main: add fftw_init_threads() after creating GMT session */
-int main(int argc, char **argv) {
-	int input_flag, nfiles;
-	struct xcorr *xc;
-	clock_t start, end;
-	double cpu_time;
-	void *API = NULL; /* GMT API control structure */
+complex double *load_slc_rows(FILE *fin, int start, int n_rows, int nx) {
+    long offset;
+    short *tmp;
+    complex double *arr;
 
-	xc = (struct xcorr *)malloc(sizeof(struct xcorr));
+    offset = nx * start * sizeof(short) * 2;
+    fseek(fin, offset, SEEK_SET);
 
-	verbose = 0;
-	debug = 0;
-	input_flag = 0;
-	nfiles = 2;
-	xc->interp_flag = 0;
-	xc->corr_flag = 2;
+    tmp = malloc(nx * sizeof(short) * 2);
+    arr = fftw_alloc_complex((size_t)n_rows * nx);
+    if (tmp == NULL || arr == NULL) {
+        perror("Failed to allocate memory for SLC rows");
+        exit(-1);
+    }
 
-	/* Begin: Initializing new GMT session */
-	if ((API = GMT_Create_Session(argv[0], 0U, 0U, NULL)) == NULL)
-		return EXIT_FAILURE;
-
-	/* initialize FFTW threads support (safe to call even if not using FFTW threads) */
-#ifdef _OPENMP
-	fftwf_init_threads();
-#endif
-
-	if (argc < 3)
-		die(USAGE, "");
-
-	set_defaults(xc);
-
-	parse_command_line(argc, argv, xc, &nfiles, &input_flag, USAGE);
-
-	/* read prm files */
-	if (input_flag == 0)
-		handle_prm(API, argv, xc, nfiles);
-
-	if (debug)
-		print_params(xc);
-
-	/* output file */
-	if (xc->corr_flag == 0)
-		strcpy(xc->filename, "time_xcorr.dat");
-	if (xc->corr_flag == 1)
-		strcpy(xc->filename, "time_xcorr_Gatelli.dat");
-	if (xc->corr_flag == 2)
-		strcpy(xc->filename, "freq_xcorr.dat");
-
-	xc->file = fopen(xc->filename, "w");
-	if (xc->file == NULL)
-		die("Can't open output file", xc->filename);
-
-	/* x locations, y locations */
-	get_locations(xc);
-
-	/* calculate correlation at all points */
-	start = clock();
-
-	do_correlation(API, xc);
-
-	end = clock();
-	cpu_time = ((double)(end - start)) / CLOCKS_PER_SEC;
-	fprintf(stdout, " elapsed time: %lf \n", cpu_time);
-
-        if (xc->format == 0 || xc->format == 1) {
-          fclose(xc->data1);
-          fclose(xc->data2);
+    for (int i=0; i<n_rows; i++) {
+        if (fread(tmp, 2*sizeof(short), nx, fin) != (unsigned long)nx) {
+            perror("Failed to read data from SLC file!");
+            exit(-1);
         }
 
-	if (GMT_Destroy_Session(API))
-		return EXIT_FAILURE; /* Remove the GMT machinery */
+        for (int j=0; j<nx; j++)
+            arr[i*nx + j] = tmp[2*j] + tmp[2*j+1] * I;
+    }
 
-	return (EXIT_SUCCESS);
+    free(tmp);
+    return arr;
+}
+
+complex double *load_slc_window(
+        FILE *fin,
+        int start_row, int n_rows, int total_nx,
+        int start_col, int n_cols) {
+    short *tmp;
+    complex double *arr;
+
+    tmp = malloc((size_t)n_cols * sizeof(short) * 2);
+    arr = fftw_alloc_complex((size_t)n_rows * n_cols);
+    if (tmp == NULL || arr == NULL) {
+        perror("Failed to allocate memory for SLC window");
+        exit(-1);
+    }
+
+    for (int i=0; i<n_rows; i++) {
+        long long sample_offset = (long long)(start_row + i) * total_nx + start_col;
+        off_t byte_offset = (off_t)(sample_offset * (long long)(sizeof(short) * 2));
+
+        if (fseeko(fin, byte_offset, SEEK_SET) != 0) {
+            perror("Failed to seek SLC file");
+            exit(-1);
+        }
+
+        if (fread(tmp, 2*sizeof(short), n_cols, fin) != (size_t)n_cols) {
+            perror("Failed to read data from SLC file");
+            exit(-1);
+        }
+
+        for (int j=0; j<n_cols; j++)
+            arr[i*n_cols + j] = tmp[2*j] + tmp[2*j+1] * I;
+    }
+
+    free(tmp);
+    return arr;
+}
+
+long double time_corr(
+        const double *c1r,
+        const double *c2r,
+        int xsearch, int ysearch,
+        int xoff, int yoff) {
+
+    int nx_corr, ny_corr;
+    int nx_win;
+
+    nx_corr = xsearch * 2;
+    nx_win = nx_corr * 2;
+    ny_corr = ysearch * 2;
+
+    long double num, denom, denom1, denom2, result;
+
+    num = denom1 = denom2 = 0.0;
+    for (int i=0; i<ny_corr; i++)
+        for (int j=0; j<nx_corr; j++) {
+            long double a = c1r[(ysearch + i + yoff) * nx_win + (xsearch + j + xoff)];
+            long double b = c2r[(ysearch + i) * nx_win + (xsearch + j)];
+
+            num += a * b;
+            denom1 += a * a;
+            denom2 += b * b;
+        }
+
+    denom = sqrtl(denom1 * denom2);
+
+    if (denom == 0.0) {
+        fprintf(stderr, "calc_corr: denominator = zero: setting corr to 0 \n");
+        result = 0.0;
+    } else
+        result = 100.0 * fabsl(num / denom);
+
+    return result;
+}
+
+double *freq_corr(
+        double *c1r,
+        double *c2r,
+        int nx_win, int ny_win,
+        pthread_mutex_t *fftw_lock) {
+    complex double *c1r_fft, *c2r_fft;
+    double *c3r;
+    fftw_plan plan1, plan2, plan3;
+
+    if (fftw_lock) pthread_mutex_lock(fftw_lock);
+    c1r_fft = fftw_alloc_complex((size_t)ny_win * (nx_win/2+1));
+    c2r_fft = fftw_alloc_complex((size_t)ny_win * (nx_win/2+1));
+    c3r = fftw_alloc_real((size_t)nx_win * ny_win);
+    if (c1r_fft == NULL || c2r_fft == NULL || c3r == NULL) {
+        perror("Failed to allocate memory for FFT correlation");
+        exit(-1);
+    }
+
+    plan1 = fftw_plan_dft_r2c_2d(ny_win, nx_win, c1r, c1r_fft, FFTW_ESTIMATE);
+    plan2 = fftw_plan_dft_r2c_2d(ny_win, nx_win, c2r, c2r_fft, FFTW_ESTIMATE);
+    plan3 = fftw_plan_dft_c2r_2d(ny_win, nx_win, c1r_fft, c3r, FFTW_ESTIMATE);
+    if (plan1 == NULL || plan2 == NULL || plan3 == NULL) {
+        if (fftw_lock) pthread_mutex_unlock(fftw_lock);
+        fprintf(stderr, "Failed to create FFTW plans for freq_corr\n");
+        exit(EXIT_FAILURE);
+    }
+    if (fftw_lock) pthread_mutex_unlock(fftw_lock);
+
+    fftw_execute(plan1);
+    fftw_execute(plan2);
+
+    int isign = 1;
+    for (int k=0; k<ny_win*(nx_win/2+1); k++, isign=-isign)
+        c1r_fft[k] *= isign * conj(c2r_fft[k]);
+
+    fftw_execute(plan3);
+
+    if (fftw_lock) pthread_mutex_lock(fftw_lock);
+    fftw_free(c1r_fft);
+    fftw_free(c2r_fft);
+    fftw_destroy_plan(plan1);
+    fftw_destroy_plan(plan2);
+    fftw_destroy_plan(plan3);
+    if (fftw_lock) pthread_mutex_unlock(fftw_lock);
+
+    // FIXME: remove scaling later
+    // scale to match GMTSAR for debugging
+    for (int i=0; i<nx_win*ny_win; i++)
+        c3r[i] = fabs(c3r[i] / (nx_win * ny_win));
+
+    return c3r;
+}
+
+void corr_thread(gpointer arg, gpointer user_data) {
+    struct st_corr_thread_data *data = arg;
+    pthread_mutex_t *lock = user_data;
+
+    int xsearch, ysearch;
+    int nx_corr, ny_corr;
+    int nx_win, ny_win;
+    complex double *c1, *c2;
+    double *c1r, *c2r;
+
+    xsearch = data->xc->xsearch;
+    nx_corr = xsearch * 2;
+    nx_win = nx_corr * 2;
+    ysearch = data->xc->ysearch;
+    ny_corr = ysearch * 2;
+    ny_win = ny_corr * 2;
+
+    c1 = data->c1;
+    c2 = data->c2;
+
+    // last part of assign_values
+    if (data->xc->ri > 1) {
+        complex double *interp1, *interp2;
+        int interp_width;
+
+        interp1 = dft_interpolate_2d(c1, ny_win, nx_win, 1, data->xc->ri, lock);
+        interp2 = dft_interpolate_2d(c2, ny_win, nx_win, 1, data->xc->ri, lock);
+        interp_width = data->xc->ri * nx_win;
+
+        if (lock) pthread_mutex_lock(lock);
+        fftw_free(c1);
+        fftw_free(c2);
+        if (lock) pthread_mutex_unlock(lock);
+
+        c1 = c64_array_slice(interp1, interp_width,
+                0, ny_win, interp_width/2 - nx_win/2, nx_win);
+        c2 = c64_array_slice(interp2, interp_width,
+                0, ny_win, interp_width/2 - nx_win/2, nx_win);
+
+        if (lock) pthread_mutex_lock(lock);
+        fftw_free(interp1);
+        fftw_free(interp2);
+        if (lock) pthread_mutex_unlock(lock);
+    }
+
+    c1r = fftw_alloc_real((size_t)nx_win * ny_win);
+    c2r = fftw_alloc_real((size_t)nx_win * ny_win);
+    if (c1r == NULL || c2r == NULL) {
+        perror("Failed to allocate memory for amplitude buffers");
+        exit(-1);
+    }
+
+    double mean1 = 0.0, mean2 = 0.0;
+    for (int k=0; k<nx_win*ny_win; k++) {
+        mean1 += (c1r[k] = cabs(c1[k]));
+        mean2 += (c2r[k] = cabs(c2[k]));
+    }
+
+    if (lock) pthread_mutex_lock(lock);
+    fftw_free(c1);
+    fftw_free(c2);
+    if (lock) pthread_mutex_unlock(lock);
+
+    mean1 /= nx_win * ny_win;
+    mean2 /= nx_win * ny_win;
+    for (int k=0; k<nx_win*ny_win; k++) {
+        c1r[k] -= mean1;
+        c2r[k] -= mean2;
+    }
+
+    // make_mask and mask
+    for (int i=0; i<ny_win; i++)
+        for (int j=0; j<nx_win; j++) {
+            if (i < ysearch
+                    || i >= ny_win - ysearch
+                    || j < xsearch
+                    || j >= nx_win - xsearch)
+                c2r[i*nx_win + j] = 0;
+        }
+
+    // calc correlation with 2D FFT
+    double *c3r, *corr;
+    c3r = freq_corr(c1r, c2r, nx_win, ny_win, lock);
+    corr = f64_array_slice(c3r, nx_win, ysearch, ny_corr, xsearch, nx_corr);
+
+    //puts("ARRAY corr:");
+    //print_complex_double("%+04.2f%+04.2fj\t", corr, ny_corr, nx_corr);
+
+    int xpeak, ypeak;
+    double cmax, cave, max_corr;
+
+    f64_array_stats(corr, ny_corr, nx_corr, &cave, &cmax, &ypeak, &xpeak);
+    xpeak -= xsearch;
+    ypeak -= ysearch;
+
+    max_corr = time_corr(c1r, c2r, xsearch, ysearch, xpeak, ypeak);
+
+    if (lock) pthread_mutex_lock(lock);
+    fftw_free(c1r);
+    fftw_free(c2r);
+    if (lock) pthread_mutex_unlock(lock);
+
+    //fprintf(stderr, "xypeak: (%d, %d)\n", xpeak, ypeak);
+    //fprintf(stderr, "max_corr: %g\n", cmax);
+
+    double xfrac = 0.0, yfrac = 0.0;
+
+    // high-res correlation
+    if (data->xc->interp_factor > 1) {
+        int factor = data->xc->interp_factor;
+        int nx_corr2 = data->xc->n2x;
+        int ny_corr2 = data->xc->n2y;
+        double *corr2;
+        double *hi_corr;
+
+        assert(nx_corr2 >= 2 && TEST_2PWR(nx_corr2));
+        assert(ny_corr2 >= 2 && TEST_2PWR(ny_corr2));
+
+        // FIXME: remove this later
+        // scale to match GMTSAR for debugging
+        for (int k=0; k<nx_corr*ny_corr; k++)
+            corr[k] *= max_corr / cmax;
+
+        // FIXME: original GMTSAR are vulnerable to memory violation
+        // offset ypeak and xpeak to fix
+        if (ypeak + ysearch < ny_corr2/2)
+            ypeak = ny_corr2 / 2 - ysearch;
+        else if (ypeak + ysearch >= ny_corr - ny_corr2/2)
+            ypeak = ny_corr - ny_corr2/2 - ysearch - 1;
+
+        if (xpeak + xsearch < nx_corr2/2)
+            xpeak = nx_corr2 / 2 - xsearch;
+        else if (xpeak + xsearch >= nx_corr - nx_corr2/2)
+            xpeak = nx_corr - nx_corr2/2 - xsearch - 1;
+
+        corr2 = f64_array_slice(
+                corr, nx_corr,
+                ypeak + ysearch - ny_corr2/2, ny_corr2,
+                xpeak + xsearch - nx_corr2/2, nx_corr2);
+
+        for (int i=0; i<nx_corr2*ny_corr2; i++)
+            corr2[i] = pow(corr2[i], 0.25);
+
+        hi_corr = rdft_interpolate_2d(corr2, ny_corr2, nx_corr2, factor, factor, lock);
+
+        int ny_hi = ny_corr2 * factor;
+        int nx_hi = nx_corr2 * factor;
+        int xpeak2, ypeak2;
+
+        f64_array_stats(hi_corr, ny_hi, nx_hi, NULL, NULL, &ypeak2, &xpeak2);
+        ypeak2 -= ny_hi / 2;
+        xpeak2 -= nx_hi / 2;
+
+        assert(xpeak2 >= -nx_hi/2 && xpeak2 < nx_hi/2);
+        assert(ypeak2 >= -ny_hi/2 && ypeak2 < ny_hi/2);
+
+        xfrac = xpeak2 / (double)factor;
+        yfrac = ypeak2 / (double)factor;
+
+        if (lock) pthread_mutex_lock(lock);
+        fftw_free(corr2);
+        fftw_free(hi_corr);
+        if (lock) pthread_mutex_unlock(lock);
+    }
+
+    data->xoff = data->xc->x_offset - ((xpeak + xfrac) / data->xc->ri);
+    data->yoff = data->xc->y_offset - (ypeak + yfrac) + data->loc_y * data->xc->astretcha;
+    data->corr = max_corr;
+
+    // printf(" %d %6.3f %d %6.3f %6.2f \n", data->loc_x, xoff, data->loc_y, yoff, cmax);
+
+    if (lock) pthread_mutex_lock(lock);
+    fftw_free(c3r);
+    fftw_free(corr);
+    if (lock) pthread_mutex_unlock(lock);
+
+    g_atomic_int_set(&data->done, 1);
+}
+
+void do_correlation(struct st_xcorr *xc, long thread_n) {
+    int loc_x, loc_y;
+    int slave_loc_x, slave_loc_y;
+    int nx_win, ny_win;
+    int nx_corr, ny_corr;
+    complex double *c1, *c2;
+    FILE *fmaster, *fslave;
+    FILE *fout;
+    struct st_corr_thread_data *row_tasks;
+    int *loc_x_list, *loc_y_list;
+    double scale = 1.0 + xc->astretcha;
+    int clamp_x_count = 0, clamp_y_count = 0;
+
+    if ((fmaster = fopen(xc->m_path, "rb")) == NULL) {
+        perror("failed to open master SLC image");
+        exit(-1);
+    }
+
+    if ((fslave = fopen(xc->s_path, "rb")) == NULL) {
+        perror("failed to open slave SLC image");
+        exit(-1);
+    }
+
+    if ((fout = fopen("freq_xcorr.dat", "w")) == NULL) {
+        perror("failed to open output file");
+        exit(-1);
+    }
+
+    nx_corr = xc->xsearch * 2;
+    nx_win = nx_corr * 2;
+    ny_corr = xc->ysearch * 2;
+    ny_win = ny_corr * 2;
+
+    loc_x_list = malloc((size_t)xc->nxl * sizeof(*loc_x_list));
+    loc_y_list = malloc((size_t)xc->nyl * sizeof(*loc_y_list));
+    if (loc_x_list == NULL || loc_y_list == NULL) {
+        perror("failed to allocate location arrays");
+        exit(-1);
+    }
+
+    compute_axis_positions(
+            loc_x_list, xc->nxl,
+            nx_win/2,
+            xc->m_nx, xc->s_nx,
+            scale, xc->x_offset, "x");
+    compute_axis_positions(
+            loc_y_list, xc->nyl,
+            ny_win/2,
+            xc->m_ny, xc->s_ny,
+            scale, xc->y_offset, "y");
+
+    row_tasks = calloc((size_t)xc->nxl, sizeof(*row_tasks));
+    if (row_tasks == NULL) {
+        perror("failed to allocate task buffers");
+        exit(-1);
+    }
+
+#ifndef NO_PTHREAD
+    GThreadPool *thread_pool;
+    pthread_mutex_t fftw_lock;
+    guint queue_limit;
+
+    thread_pool = g_thread_pool_new(corr_thread, &fftw_lock, thread_n, TRUE, NULL);
+    pthread_mutex_init(&fftw_lock, NULL);
+    queue_limit = 1U;
+#endif
+
+    for (int jy=0; jy<xc->nyl; jy++) {
+        int row_n = 0;
+
+        loc_y = loc_y_list[jy];
+        slave_loc_y = (1+xc->astretcha)*loc_y + xc->y_offset;
+        slave_loc_y = clamp_center(slave_loc_y, ny_win/2, xc->s_ny, &clamp_y_count);
+
+        for (int ix=0; ix<xc->nxl; ix++) {
+            loc_x = loc_x_list[ix];
+            slave_loc_x = (1+xc->astretcha)*loc_x + xc->x_offset;
+            slave_loc_x = clamp_center(slave_loc_x, nx_win/2, xc->s_nx, &clamp_x_count);
+
+            //fprintf(stderr, "LOC#%d (%d, %d) <=> (%d, %d)\n", loc_n, loc_x, loc_y, slave_loc_x, slave_loc_y);
+
+#ifndef NO_PTHREAD
+            while (g_thread_pool_unprocessed(thread_pool) >= queue_limit)
+                g_usleep(1000);
+#endif
+
+            c1 = load_slc_window(
+                    fmaster,
+                    loc_y - ny_win/2, ny_win, xc->m_nx,
+                    loc_x - nx_win/2, nx_win);
+            c2 = load_slc_window(
+                    fslave,
+                    slave_loc_y - ny_win/2, ny_win, xc->s_nx,
+                    slave_loc_x - nx_win/2, nx_win);
+ 
+            struct st_corr_thread_data *p = &row_tasks[row_n++];
+            *p = (struct st_corr_thread_data) {
+                .xc = xc,
+                .c1 = c1,
+                .c2 = c2,
+                .loc_x = loc_x,
+                .loc_y = loc_y,
+                .done = 0
+            };
+
+#ifndef NO_PTHREAD
+            g_thread_pool_push(thread_pool, p, NULL);
+#else
+            corr_thread(p, NULL);
+#endif
+        }
+
+#ifndef NO_PTHREAD
+        for (int i=0; i<row_n; i++)
+            while (!g_atomic_int_get(&row_tasks[i].done))
+                g_usleep(1000);
+#endif
+
+        for (int i=0; i<row_n; i++) {
+            struct st_corr_thread_data *p = row_tasks + i;
+            fprintf(fout, " %d %6.3f %d %6.3f %6.2f \n",
+                    p->loc_x, p->xoff, p->loc_y, p->yoff, p->corr);
+        }
+    }
+
+#ifndef NO_PTHREAD
+    g_thread_pool_free(thread_pool, FALSE, TRUE);
+    pthread_mutex_destroy(&fftw_lock);
+#endif
+    if (clamp_x_count > 0 || clamp_y_count > 0) {
+        fprintf(stderr,
+                "Overlap mode: clamped slave window centers to preserve requested --nx/--ny "
+                "(x clamps=%d, y clamps=%d).\n",
+                clamp_x_count, clamp_y_count);
+    }
+    fftw_cleanup();
+
+    free(row_tasks);
+    free(loc_x_list);
+    free(loc_y_list);
+    fclose(fmaster);
+    fclose(fslave);
+    fclose(fout);
+}
+
+int main(int argc, char **argv) {
+    struct st_xcorr_args args;
+    struct st_xcorr xcorr;
+    long thread_n = 0;
+
+#ifndef _OPENMP
+    printf("=== 警告: OpenMP 未启用，程序将串行运行 ===\n");
+    printf("编译时请添加 -fopenmp 选项启用并行计算\n");
+#endif
+
+    parse_opts(&args, argc, argv);
+    apply_args(&args, &xcorr);
+
+#ifndef NO_PTHREAD
+    long cpu_threads = sysconf(_SC_NPROCESSORS_ONLN);
+    if (cpu_threads < 1) cpu_threads = 1;
+    thread_n = cpu_threads * 3 / 4;
+    if(thread_n < 1) thread_n = 1;
+    thread_n = auto_tune_threads(&xcorr, thread_n);
+
+    fprintf(stderr, "use %ld thread(s)\n", thread_n);
+#endif
+    do_correlation(&xcorr, thread_n);
+
+    free(xcorr.m_path);
+    free(xcorr.s_path);
+
+    return 0;
 }

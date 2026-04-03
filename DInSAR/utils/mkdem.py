@@ -49,6 +49,10 @@ def gdal_osr():
 
 SRTMGL1_BASE_URL = "https://step.esa.int/auxdata/dem/SRTMGL1"
 SRTM_NODATA = -32768
+GEOID_MODEL_EPSG = {
+    "EGM96": 5773,
+    "EGM2008": 3855,
+}
 
 
 def _safe_float(x) -> float:
@@ -390,23 +394,96 @@ def download_dem(
     return dem_tif_file
 
 
-def remove_geoid(dem_tif_file: str, output_dir: str) -> str:
-    """移除大地水准面，使高度相对于WGS84椭球面
-    
-    Args:
-        dem_tif_file: DEM TIF文件路径
-        output_dir: 输出目录
-        
-    Returns:
-        dem_wgs84_tif: 相对于WGS84椭球面的DEM TIF文件路径
+def remove_geoid(
+    dem_tif_file: str,
+    output_dir: str,
+    *,
+    geoid_model: str = "EGM96",
+    fail_on_error: bool = True,
+) -> str:
+    """将正高（大地水准面）改正为 WGS84 椭球高。
+
+    通过 GDAL/PROJ 的垂向坐标变换执行：
+      src: EPSG:4326 + geoid(vertical)
+      dst: EPSG:4979 (WGS84 3D, ellipsoidal height)
     """
-    # 注意：
-    # 大多数公开 DEM（如 SRTM）高度是“正高”（相对大地水准面）。而部分雷达几何模型期望“椭球高”。
-    # 如果你的后续链路确实需要椭球高，应在这里引入 EGM96/EGM2008 等模型做垂向改正。
-    # 这里默认不做改正，保持输入 DEM 高度基准不变。
-    # 保留这个函数是为了将来接入 EGM96/EGM2008 时不破坏调用方接口。
-    print("大地水准面移除：当前为 no-op（未做垂向改正）")
-    return dem_tif_file
+    gdal, _ = gdal_osr()
+    dem_abs = os.path.abspath(dem_tif_file)
+    if not os.path.exists(dem_abs):
+        raise FileNotFoundError(f"DEM 不存在: {dem_abs}")
+
+    model_u = str(geoid_model).upper()
+    if model_u not in GEOID_MODEL_EPSG:
+        raise ValueError(f"不支持的 geoid 模型: {geoid_model}，可选: {sorted(GEOID_MODEL_EPSG.keys())}")
+    src_vert_epsg = int(GEOID_MODEL_EPSG[model_u])
+    src_srs = f"EPSG:4326+{src_vert_epsg}"
+    dst_srs = "EPSG:4979"
+
+    ds = gdal.Open(dem_abs, gdal.GA_ReadOnly)
+    if not ds:
+        raise RuntimeError(f"无法打开 DEM: {dem_abs}")
+    band = ds.GetRasterBand(1)
+    nodata = band.GetNoDataValue() if band else None
+    width = int(ds.RasterXSize)
+    height = int(ds.RasterYSize)
+    gt = ds.GetGeoTransform(can_return_null=True)
+    ds = None
+
+    out_tmp = os.path.join(output_dir, f"{Path(dem_abs).stem}_ellipsoid_tmp.tif")
+    try:
+        if os.path.exists(out_tmp):
+            os.remove(out_tmp)
+    except OSError:
+        pass
+
+    warp_kwargs = dict(
+        format="GTiff",
+        srcSRS=src_srs,
+        dstSRS=dst_srs,
+        width=width,
+        height=height,
+        resampleAlg=gdal.GRA_Bilinear,
+        outputType=gdal.GDT_Float32,
+        creationOptions=["TILED=YES", "COMPRESS=DEFLATE"],
+        multithread=True,
+    )
+    if nodata is not None:
+        warp_kwargs["srcNodata"] = nodata
+        warp_kwargs["dstNodata"] = nodata
+    if gt is not None:
+        def px2geo(px: float, py: float) -> Tuple[float, float]:
+            x = gt[0] + px * gt[1] + py * gt[2]
+            y = gt[3] + px * gt[4] + py * gt[5]
+            return float(x), float(y)
+        corners = [px2geo(0, 0), px2geo(width, 0), px2geo(0, height), px2geo(width, height)]
+        xs = [p[0] for p in corners]
+        ys = [p[1] for p in corners]
+        warp_kwargs["outputBounds"] = (min(xs), min(ys), max(xs), max(ys))
+
+    print(f"执行大地水准面改正: model={model_u}, src={src_srs} -> dst={dst_srs}")
+    try:
+        out_ds = gdal.Warp(out_tmp, dem_abs, **warp_kwargs)
+        if not out_ds:
+            raise RuntimeError("gdal.Warp 返回空对象")
+        out_ds.FlushCache()
+        out_ds = None
+        os.replace(out_tmp, dem_abs)
+        print(f"大地水准面改正完成: {dem_abs}")
+        return dem_abs
+    except Exception as e:
+        try:
+            if os.path.exists(out_tmp):
+                os.remove(out_tmp)
+        except OSError:
+            pass
+        msg = (
+            f"大地水准面改正失败(model={model_u})。"
+            f"请确认 PROJ 垂向格网可用，或使用 --no-geoid-correction 跳过。错误: {e}"
+        )
+        if fail_on_error:
+            raise RuntimeError(msg) from e
+        print("警告: " + msg + "，回退为不改正。")
+        return dem_abs
 
 
 def fill_nodata_inplace(ds, *, max_search_dist_px: int = 100, smoothing_iters: int = 0) -> int:
@@ -745,6 +822,9 @@ def process_dem(
     fill_nodata: bool = True,
     fill_max_search_dist_px: int = 100,
     fill_smoothing_iters: int = 0,
+    geoid_correction: bool = True,
+    geoid_model: str = "EGM96",
+    geoid_fail_on_error: bool = True,
 ) -> Dict[str, str]:
     """处理DEM的完整流程
     
@@ -767,6 +847,9 @@ def process_dem(
         fill_nodata: 是否对输出 DEM 执行 GDAL FillNodata（默认 True）
         fill_max_search_dist_px: FillNodata 最大搜索半径（像素）
         fill_smoothing_iters: FillNodata 平滑迭代次数（0 表示不平滑）
+        geoid_correction: 是否执行大地水准面改正（默认 True）
+        geoid_model: 大地水准面模型（EGM96/EGM2008）
+        geoid_fail_on_error: 改正失败时是否报错终止（默认 True）
         
     Returns:
         包含各文件路径的字典
@@ -858,9 +941,18 @@ def process_dem(
         ds.FlushCache()
         ds = None
 
-    # 4. 高程基准处理（默认不做垂向改正）
-    print("4. 高程基准处理（默认不做大地水准面改正）")
-    dem_latlon_final = remove_geoid(dem_latlon_tif, output_dir)
+    # 4. 高程基准处理（默认执行大地水准面改正）
+    if geoid_correction:
+        print(f"4. 高程基准处理：执行大地水准面改正（model={str(geoid_model).upper()}）")
+        dem_latlon_final = remove_geoid(
+            dem_latlon_tif,
+            output_dir,
+            geoid_model=geoid_model,
+            fail_on_error=bool(geoid_fail_on_error),
+        )
+    else:
+        print("4. 高程基准处理：已禁用大地水准面改正（--no-geoid-correction）")
+        dem_latlon_final = dem_latlon_tif
 
     result: Dict[str, str] = {"dem_latlon_tif": dem_latlon_final}
     if make_vrt:
@@ -980,6 +1072,25 @@ def main():
         help="禁用 GDAL FillNodata（默认启用；启用时会对输出 DEM 尝试填补 NoData 空洞）。",
     )
     parser.add_argument(
+        "--no-geoid-correction",
+        action="store_false",
+        dest="geoid_correction",
+        default=True,
+        help="禁用大地水准面改正（默认启用；启用时将正高改为 WGS84 椭球高）。",
+    )
+    parser.add_argument(
+        "--geoid-model",
+        choices=["EGM96", "EGM2008"],
+        default="EGM96",
+        help="大地水准面模型（用于正高->椭球高改正）。",
+    )
+    parser.add_argument(
+        "--geoid-on-fail",
+        choices=["error", "noop"],
+        default="error",
+        help="大地水准面改正失败时行为：error=报错终止；noop=记录警告并回退不改正。",
+    )
+    parser.add_argument(
         "--fill-maxdist",
         type=int,
         default=100,
@@ -1021,6 +1132,9 @@ def main():
         fill_nodata=args.fill_nodata,
         fill_max_search_dist_px=args.fill_maxdist,
         fill_smoothing_iters=args.fill_smooth,
+        geoid_correction=args.geoid_correction,
+        geoid_model=args.geoid_model,
+        geoid_fail_on_error=(args.geoid_on_fail == "error"),
     )
     
     # 打印结果

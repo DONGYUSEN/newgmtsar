@@ -46,102 +46,108 @@
 #define clipi22(A) (((A) > I2MAX1) ? I2MAX1 : (((A) < -I2MAX1) ? -I2MAX1 : A))
 #include "sfd_complex.h"
 
-char *input_file;
-char *led_file;
-char *out_amp_file;
-char *out_data_file;
-char *deskew;
-char *iqflip;
-char *off_vid;
-char *srm;
-char *ref_file;
-char *orbdir;
-char *lookdir;
+#ifdef SOI_DEFINE_GLOBALS
+#define SOI_EXTERN
+#else
+#define SOI_EXTERN extern
+#endif
+SOI_EXTERN char *input_file;
+SOI_EXTERN char *led_file;
+SOI_EXTERN char *out_amp_file;
+SOI_EXTERN char *out_data_file;
+SOI_EXTERN char *deskew;
+SOI_EXTERN char *iqflip;
+SOI_EXTERN char *off_vid;
+SOI_EXTERN char *srm;
+SOI_EXTERN char *ref_file;
+SOI_EXTERN char *orbdir;
+SOI_EXTERN char *lookdir;
 
-int debug_flag;
-int bytes_per_line;
-int good_bytes;
-int first_line;
-int num_patches;
-int first_sample;
-int num_valid_az;
-int st_rng_bin;
-int num_rng_bins;
-int nextend;
-int nlooks;
-int xshift;
-int yshift;
-int fdc_ystrt;
-int fdc_strt;
+SOI_EXTERN int debug_flag;
+SOI_EXTERN int bytes_per_line;
+SOI_EXTERN int good_bytes;
+SOI_EXTERN int first_line;
+SOI_EXTERN int num_patches;
+SOI_EXTERN int first_sample;
+SOI_EXTERN int num_valid_az;
+SOI_EXTERN int st_rng_bin;
+SOI_EXTERN int num_rng_bins;
+SOI_EXTERN int nextend;
+SOI_EXTERN int nlooks;
+SOI_EXTERN int xshift;
+SOI_EXTERN int yshift;
+SOI_EXTERN int fdc_ystrt;
+SOI_EXTERN int fdc_strt;
 
 /*New parameters 4/23/97 -EJP */
-int rec_start;
-int rec_stop;
+SOI_EXTERN int rec_start;
+SOI_EXTERN int rec_stop;
 /* End new parameters 4/23/97 -EJP */
 
 /* New parameters 4/23/97 -DTS */
-int SC_identity;       /* (1)-ERS1 (2)-ERS2 (3)-Radarsat (4)-Envisat (5)-ALOS
-                          (6)-Envisat_SLC  (7)-TSX (8)-CSK (9)-RS2 (10)-S1A*/
-int ref_identity;      /* (1)-ERS1 (2)-ERS2 (3)-Radarsat (4)-Envisat (5)-ALOS
-                          (6)-Envisat_SLC  (7)-TSX (8)-CSK (9)-RS2 (10)-S1A*/
-double SC_clock_start; /* YYDDD.DDDD */
-double SC_clock_stop;  /* YYDDD.DDDD */
-double icu_start;      /* onboard clock counter */
-double clock_start;    /* DDD.DDDDDDDD  clock without year has more precision */
-double clock_stop;     /* DDD.DDDDDDDD  clock without year has more precision */
+SOI_EXTERN int SC_identity;       /* (1)-ERS1 (2)-ERS2 (3)-Radarsat (4)-Envisat (5)-ALOS
+                                     (6)-Envisat_SLC  (7)-TSX (8)-CSK (9)-RS2 (10)-S1A*/
+SOI_EXTERN int ref_identity;      /* (1)-ERS1 (2)-ERS2 (3)-Radarsat (4)-Envisat (5)-ALOS
+                                     (6)-Envisat_SLC  (7)-TSX (8)-CSK (9)-RS2 (10)-S1A*/
+SOI_EXTERN double SC_clock_start; /* YYDDD.DDDD */
+SOI_EXTERN double SC_clock_stop;  /* YYDDD.DDDD */
+SOI_EXTERN double icu_start;      /* onboard clock counter */
+SOI_EXTERN double clock_start;    /* DDD.DDDDDDDD  clock without year has more precision */
+SOI_EXTERN double clock_stop;     /* DDD.DDDDDDDD  clock without year has more precision */
 /* End new parameters 4/23/97 -DTS */
 
-double caltone;
-double RE;   /* Local Earth radius */
-double raa;  /* ellipsoid semi-major axis - added by RJM */
-double rcc;  /* ellipsoid semi-minor axis - added by RJM */
-double vel1; /* Equivalent SC velocity */
-double ht1;  /* (SC_radius - RE) center of frame*/
-double ht0;  /* (SC_radius - RE) start of frame */
-double htf;  /* (SC_radius - RE) end of frame */
-double near_range;
-double far_range;
-double prf1;
-double xmi1;
-double xmq1;
-double az_res;
-double fs;
-double slope;
-double pulsedur;
-double lambda;
-double rhww;
-double pctbw;
-double pctbwaz;
-double fd1;
-double fdd1;
-double fddd1;
-double sub_int_r;
-double sub_int_a;
-double stretch_r;
-double stretch_a;
-double a_stretch_r;
-double a_stretch_a;
+SOI_EXTERN double caltone;
+SOI_EXTERN double RE;   /* Local Earth radius */
+SOI_EXTERN double raa;  /* ellipsoid semi-major axis - added by RJM */
+SOI_EXTERN double rcc;  /* ellipsoid semi-minor axis - added by RJM */
+SOI_EXTERN double vel1; /* Equivalent SC velocity */
+SOI_EXTERN double ht1;  /* (SC_radius - RE) center of frame*/
+SOI_EXTERN double ht0;  /* (SC_radius - RE) start of frame */
+SOI_EXTERN double htf;  /* (SC_radius - RE) end of frame */
+SOI_EXTERN double near_range;
+SOI_EXTERN double far_range;
+SOI_EXTERN double prf1;
+SOI_EXTERN double xmi1;
+SOI_EXTERN double xmq1;
+SOI_EXTERN double az_res;
+SOI_EXTERN double fs;
+SOI_EXTERN double slope;
+SOI_EXTERN double pulsedur;
+SOI_EXTERN double lambda;
+SOI_EXTERN double rhww;
+SOI_EXTERN double pctbw;
+SOI_EXTERN double pctbwaz;
+SOI_EXTERN double fd1;
+SOI_EXTERN double fdd1;
+SOI_EXTERN double fddd1;
+SOI_EXTERN double sub_int_r;
+SOI_EXTERN double sub_int_a;
+SOI_EXTERN double stretch_r;
+SOI_EXTERN double stretch_a;
+SOI_EXTERN double a_stretch_r;
+SOI_EXTERN double a_stretch_a;
 
 /* New parameters 8/28/97 -DTS */
-double baseline_start;
-double baseline_center;
-double baseline_end;
-double alpha_start;
-double alpha_center;
-double alpha_end;
+SOI_EXTERN double baseline_start;
+SOI_EXTERN double baseline_center;
+SOI_EXTERN double baseline_end;
+SOI_EXTERN double alpha_start;
+SOI_EXTERN double alpha_center;
+SOI_EXTERN double alpha_end;
 /* New parameters 9/25/18 -EXU */
-double B_offset_start;
-double B_offset_center;
-double B_offset_end;
+SOI_EXTERN double B_offset_start;
+SOI_EXTERN double B_offset_center;
+SOI_EXTERN double B_offset_end;
 /* End new parameters 8/28/97 -DTS */
-double bparaa; /* parallel baseline - added by RJM */
-double bperpp; /* perpendicular baseline - added by RJM */
+SOI_EXTERN double bparaa; /* parallel baseline - added by RJM */
+SOI_EXTERN double bperpp; /* perpendicular baseline - added by RJM */
 
 /* New parameters 4/26/06 */
-int nrows;
-int num_lines;
+SOI_EXTERN int nrows;
+SOI_EXTERN int num_lines;
 
 /* New parameters 09/18/08 */
-double TEC_start;
-double TEC_end;
+SOI_EXTERN double TEC_start;
+SOI_EXTERN double TEC_end;
+#undef SOI_EXTERN
 #endif /* SOI_H	*/

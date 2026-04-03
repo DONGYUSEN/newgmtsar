@@ -3,25 +3,29 @@ include ../../config.mk
 LIB	= lib/ibENVI.a
 DIRS	= ASA_CAT Dop_orbit ENVI_decode ENVI_SLC_decode
 SCRIPT	= scripts
+ENVI_PRE_PROCESS = $(SCRIPT)/ENVI_pre_process
+ENVI_PRE_PROCESS_IN = $(SCRIPT)/ENVI_pre_process.in
+ENVI_SLC_PRE_PROCESS = $(SCRIPT)/ENVI_SLC_pre_process
+ENVI_SLC_PRE_PROCESS_IN = $(SCRIPT)/ENVI_SLC_pre_process.in
 
 all:	$(LIB)
 	for d in $(DIRS); do \
-		(cd $$d; $(MAKE) all); \
+		(cd $$d; $(MAKE) all) || exit $$?; \
 	done
 
-install:	all
+install:	all $(ENVI_PRE_PROCESS) $(ENVI_SLC_PRE_PROCESS)
 	for d in $(DIRS); do \
-		(cd $$d; $(MAKE) install); \
+		(cd $$d; $(MAKE) install) || exit $$?; \
 	done
 	$(INSTALL) $(SCRIPT)/dump_orbit_envi.pl $(bindir)
 	$(INSTALL) $(SCRIPT)/dump_time_envi.pl $(bindir)
 	$(INSTALL) $(SCRIPT)/find_auxi.pl $(bindir)
-	$(INSTALL) $(SCRIPT)/ENVI_pre_process $(bindir)
-	$(INSTALL) $(SCRIPT)/ENVI_SLC_pre_process $(bindir)
+	$(INSTALL) $(ENVI_PRE_PROCESS) $(bindir)
+	$(INSTALL) $(ENVI_SLC_PRE_PROCESS) $(bindir)
 
 uninstall:
 	for d in $(DIRS); do \
-		(cd $$d; $(MAKE) uninstall); \
+		(cd $$d; $(MAKE) uninstall) || exit $$?; \
 	done
 	rm -f $(bindir)/dump_orbit_envi.pl
 	rm -f $(bindir)/dump_time_envi.pl
@@ -31,7 +35,7 @@ uninstall:
 
 clean:
 	for d in $(DIRS); do \
-		(cd $$d; $(MAKE) clean); \
+		(cd $$d; $(MAKE) clean) || exit $$?; \
 	done
 	(cd lib_src; $(MAKE) clean)
 
@@ -41,3 +45,12 @@ $(LIB):
 
 spotless:	clean
 	rm -rf lib
+	rm -f $(ENVI_PRE_PROCESS) $(ENVI_SLC_PRE_PROCESS)
+
+$(ENVI_PRE_PROCESS): $(ENVI_PRE_PROCESS_IN)
+	sed -e 's|@ORBITS_DIR@|$(ORBITS_DIR)|g' $< > $@
+	chmod +x $@
+
+$(ENVI_SLC_PRE_PROCESS): $(ENVI_SLC_PRE_PROCESS_IN)
+	sed -e 's|@ORBITS_DIR@|$(ORBITS_DIR)|g' $< > $@
+	chmod +x $@

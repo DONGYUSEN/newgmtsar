@@ -4,6 +4,7 @@ LIB = libALOS.a
 INCLUDES = -I../include
 
 SRCS =	utils.c \
+	image_sio_globals.c \
 	null_sio_struct.c \
 	get_sio_struct.c \
 	put_sio_struct.c \

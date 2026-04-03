@@ -36,6 +36,7 @@
 #include "stateV.h"
 #include "tiffio.h"
 #include <math.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -88,7 +89,7 @@ char *USAGE = "\nUsage: make_slc_s1a_tops xml_file tiff_file output mode dr.grd 
 int main(int argc, char **argv) {
 
 	FILE *XML_FILE, *OUTPUT_PRM, *OUTPUT_LED;
-	FILE *OUTPUT_SLCL = NULL, *OUTPUT_SLCC = NULL, *OUTPUT_SLCH = NULL, *BB = NULL, *OUTPUT_RMP;
+	FILE *OUTPUT_SLCL = NULL, *OUTPUT_SLCC = NULL, *OUTPUT_SLCH = NULL, *BB = NULL, *OUTPUT_RMP = NULL;
 	TIFF *TIFF_FILE;
 	char tmp_str[DEF_SIZE], rshifts[DEF_SIZE], ashifts[DEF_SIZE];
 	struct PRM prm;
@@ -225,8 +226,9 @@ int main(int argc, char **argv) {
 		fclose(OUTPUT_SLCH);
 	if (imode == 2)
 		fclose(BB);
-    if (imode == 3)
-        fclose(OUTPUT_RMP);
+	if (imode == 3) {
+		fclose(OUTPUT_RMP);
+	}
 
 	strcpy(tmp_str, argv[3]);
 	strcat(tmp_str, ".PRM");
@@ -291,7 +293,7 @@ int pop_burst(struct PRM *prm, tree *xml_tree, struct burst_bounds *bb, char *fi
 
 	char tmp_c[DEF_SIZE], tmp_cc[60000];
 	double tmp_d, dt, t[DEF_SIZE];
-	int i, j, k, nl = 0, nlf, ntl = 0, count, lpb, tmp_i, flag, flag0;
+	int i, j, k, nl = 0, nlf, count, lpb, tmp_i, flag, flag0;
 	int k_start = 0, kC;
 	int *kF, *ksa, *ksr, *kea, *ker, *kover;
 	double t0 = -1., time;
@@ -389,8 +391,6 @@ int pop_burst(struct PRM *prm, tree *xml_tree, struct burst_bounds *bb, char *fi
 	search_tree(xml_tree, "/product/swathTiming/burstList/", tmp_c, 3, 0, 1);
 	count = (int)str2double(tmp_c);
 	// count = 1;
-	search_tree(xml_tree, "/product/imageAnnotation/imageInformation/numberOfLines/", tmp_c, 1, 0, 1);
-	ntl = (int)str2double(tmp_c);
 	search_tree(xml_tree, "/product/swathTiming/linesPerBurst/", tmp_c, 1, 0, 1);
 	lpb = (int)str2double(tmp_c);
 	nlf = count * lpb;
@@ -700,14 +700,14 @@ double dramp_dmod(struct tree *xml_tree, int nb, fcomplex *cramp, int lpb, int w
 double shift_write_slc(void *API, struct PRM *prm, struct tree *xml_tree, struct burst_bounds *bb, int imode, TIFF *tif,
                        FILE *slcl, FILE *slcc, FILE *slch, FILE *rmp,char *dr_table, char *da_table) {
 
-	uint16 s = 0;
-	uint16 *buf;
-	uint32 it;
+	uint16_t s = 0;
+	uint16_t *buf;
+	uint32_t it;
 	short *tmp, *brst;
 	float *rtmp,*prmp;
 	int ii, jj, nl, k, k2, kk;
 	int count, lpb, nlf, width2, nclip = 0;
-	uint32 width, height, widthi;
+	uint32_t width, height, widthi;
 	char tmp_c[DEF_SIZE];
 	fcomplex *cbrst, *cramp;
 	float rtest, itest;
@@ -756,14 +756,14 @@ double shift_write_slc(void *API, struct PRM *prm, struct tree *xml_tree, struct
 	brst = (short *)malloc(lpb * width2 * sizeof(short));
 	cbrst = (fcomplex *)malloc(lpb * width * sizeof(fcomplex));
 	cramp = (fcomplex *)malloc(lpb * width * sizeof(fcomplex));
-	buf = (uint16 *)_TIFFmalloc(TIFFScanlineSize(tif));
+	buf = (uint16_t *)_TIFFmalloc(TIFFScanlineSize(tif));
 	tmp = (short *)malloc(width * 2 * sizeof(short));
 	rtmp = (float *)malloc(width * 2 * sizeof(float));
     prmp = (float *)malloc(lpb * width * sizeof(float));
 	nl = prm->num_lines;
 
 	if (imode == 1 || imode == 3)
-		printf("Writing SLC..Image Size: %d X %d...\n", width, nl);
+		printf("Writing SLC..Image Size: %u X %d...\n", (unsigned int)width, nl);
 	else if (imode == 2)
 		printf("Writing SLCL & SLCH..\n");
 	it = 0;
@@ -1092,7 +1092,7 @@ int compute_eap(fcomplex *cramp, tree *xml_tree, int nb) {
 	Geap = (double *)malloc(n * 2 * sizeof(double));
 	theta_eap = (double *)malloc(n * sizeof(double));
 	tau = (double *)malloc(n_samples * sizeof(double));
-	theta = (double *)malloc(n_samples * sizeof(double));
+	theta = (double *)calloc((size_t)n_samples, sizeof(double));
 	p_corr = (double *)malloc(n_samples * sizeof(double));
 
 	search_tree(xml_tree,
@@ -1137,12 +1137,12 @@ int compute_eap(fcomplex *cramp, tree *xml_tree, int nb) {
 		tau[ii] = tau0 + (double)(ii - 1) / fs;
 	jj = 0;
 	// printf("%f,%f,%f,%f\n",t_brst-anx_time,dtheta,height,theta_offnadir);
-	while (tau_sub[jj] < tau0)
+	while (jj < srtcount && tau_sub[jj] < tau0)
 		jj++;
 	for (ii = 0; ii < n_samples; ii++) {
-		while (tau_sub[jj] < tau[ii])
+		while (jj < srtcount && tau_sub[jj] < tau[ii])
 			jj++;
-		if (jj < 1 || jj > srtcount) {
+		if (jj < 1 || jj >= srtcount) {
 			// fprintf(stderr,"\ntheta: %d %d %e %e
 			// %d\n",jj,srtcount,tau0,tau[ii],ii); die("elevationAngle table size not
 			// match slantRangeTime table size","");
@@ -1156,13 +1156,13 @@ int compute_eap(fcomplex *cramp, tree *xml_tree, int nb) {
 	// printf("%d  ",jj);
 
 	jj = 0;
-	while (theta_eap[jj] < theta[0])
+	while (jj < n && theta_eap[jj] < theta[0])
 		jj++;
 	// printf("%d  ",jj);
 	for (ii = 0; ii < n_samples; ii++) {
-		while (theta_eap[jj] < theta[ii])
+		while (jj < n && theta_eap[jj] < theta[ii])
 			jj++;
-		if (jj < 1 || jj > srtcount) {
+		if (jj < 1 || jj >= n) {
 			// fprintf(stderr,"p_corr: %d %d",jj,srtcount);
 			// die("elevationAngle table size not match slantRangeTime table
 			// size","");

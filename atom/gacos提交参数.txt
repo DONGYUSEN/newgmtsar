@@ -1,0 +1,39 @@
+GACOS提交参数（基于 ~/Temp/yaxia 真实数据自动提取）
+
+邮箱:
+ysdong@cug.edu.cn
+
+影像与时间(UTC):
+- master: 2023-11-10T04:39:48.881889
+- slave : 2023-11-21T04:39:36.800884
+
+建议请求时刻(UTC, 取整到分钟):
+- master: 2023-11-10 04:40
+- slave : 2023-11-21 04:40
+
+AOI边界（来自干涉图地理范围）:
+- North: 29.833056
+- South: 29.580556
+- West : 94.765556
+- East : 95.070556
+
+建议提交边界（四周外扩0.05度，减少边缘插值效应）:
+- North: 29.883056
+- South: 29.530556
+- West : 94.715556
+- East : 95.120556
+
+建议输出:
+- Product: ZTD (Zenith Total Delay)
+- Format : GeoTIFF (若可选)
+- 单位   : meter（若可选）
+
+下载后命名建议:
+- gacos_20231110_ztd.tif
+- gacos_20231121_ztd.tif
+
+接入当前流程脚本:
+ATM_MASTER=/path/gacos_20231110_ztd.tif \
+ATM_SLAVE=/path/gacos_20231121_ztd.tif \
+ATM_SCALE=1.0 \
+/home/ysdong/Software/GMTSAR/atom/gmtsar_atm_workflow.sh

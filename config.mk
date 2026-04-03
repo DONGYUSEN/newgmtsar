@@ -16,9 +16,9 @@ SHELL		= /bin/bash
 PACKAGE_TARNAME = gmtsar
 GMTSARHOME	= /home/ysdong/Software/GMTSAR
 ORBITS_DIR	= /usr/local/orbits
-TIFF_INC	= /usr/local/include
-TIFF_LIB	= /usr/local/lib
-LALIBS		= -llapack -lblas
+TIFF_INC	= /usr/include/x86_64-linux-gnu
+TIFF_LIB	= /usr/lib/x86_64-linux-gnu
+LALIBS		= -L/usr/lib/x86_64-linux-gnu -llapack -lblas
 prefix          = /home/ysdong/Software/GMTSAR
 exec_prefix     = ${prefix}
 bindir		= $(DESTDIR)${exec_prefix}/bin
@@ -33,8 +33,8 @@ CC		= gcc
 # Preprocessing:
 CPP		= gcc -E
 CPPFLAGS	= $(INCLUDES) $(DEFINES) 
-HDF5_CPPFLAGS	= -I/usr/include/hdf5/serial -I/usr/include
-HDF5_LDFLAGS	= -L/usr/lib/x86_64-linux-gnu/hdf5/serial 
+HDF5_CPPFLAGS	= -I/usr/include/hdf5/serial
+HDF5_LDFLAGS	= -L/usr/lib/x86_64-linux-gnu/hdf5/serial -L/usr/lib/x86_64-linux-gnu
 
 #-------------------------------------------------------------------------------
 #	Math library specification 
@@ -73,7 +73,7 @@ GMTSAR		= -L/home/ysdong/Software/GMTSAR/gmtsar -lgmtsar
 #-------------------------------------------------------------------------------
 #
 CFLAGS		=  -O3 -Wall -fPIC -fno-strict-aliasing -std=gnu99 -march=native -ffast-math  -fopenmp
-LDFLAGS		=  -s -Wl,--allow-multiple-definition -Wl,-rpath=/usr/lib/x86_64-linux-gnu
+LDFLAGS		=  -s -Wl,-rpath=/usr/lib/x86_64-linux-gnu -Wl,-rpath-link=/usr/lib/x86_64-linux-gnu -Wl,-rpath-link=/lib/x86_64-linux-gnu -Wl,-rpath-link=/usr/lib -Wl,-rpath-link=/lib
 #
 #-------------------------------------------------------------------------------
 #	Shared library file extension. Examples:-march=native -ffast-math 

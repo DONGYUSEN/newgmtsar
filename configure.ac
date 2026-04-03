@@ -120,6 +120,24 @@ else
 	AX_LAPACK
 	LALIBS="$LAPACK_LIBS $BLAS_LIBS"
 fi
+cc_target=`$CC -dumpmachine 2>/dev/null`
+if test "$os" = "Linux" ; then
+	case "$cc_target" in
+		*conda-linux-gnu*)
+			# Conda linker can pull mixed BLAS/LAPACK stacks; pin search to system libdir first.
+			multiarch_dir=`$CC -print-multiarch 2>/dev/null`
+			for d in /usr/lib/$multiarch_dir /usr/lib ; do
+				if test -d "$d" ; then
+					case " $LALIBS " in
+						*" -L$d "*) ;;
+						*) LALIBS="-L$d $LALIBS" ;;
+					esac
+					break
+				fi
+			done
+			;;
+	esac
+fi
 AC_MSG_RESULT($LALIBS)
 chip=`uname -p`
 Sun_rev=`uname -r | grep '^5.'`
@@ -153,7 +171,36 @@ dnl ------------------------------------------------------------------
 dnl Set the HDF5 include and lib stuff
 dnl ------------------------------------------------------------------
 AX_LIB_HDF5()
+# AX_LIB_HDF5 may append a plain /usr/include, which can break multiarch/conda
+# toolchains by forcing host headers without the matching bits/ include tree.
+HDF5_CPPFLAGS=`printf '%s\n' "$HDF5_CPPFLAGS" | sed \
+	-e 's/[[:space:]]-I\/usr\/include[[:space:]]/ /g' \
+	-e 's/^-I\/usr\/include[[:space:]]*//' \
+	-e 's/[[:space:]]-I\/usr\/include$//' \
+	-e 's/[[:space:]][[:space:]]*/ /g' \
+	-e 's/^ //' -e 's/ $//'`
 HDF5_LIBS="$HDF5_LIBS -lhdf5_cpp"	# Add the C++ library
+if test "$os" = "Linux" ; then
+	case "$cc_target" in
+		*conda-linux-gnu*)
+			# Prefer system libcurl/libcrypto with system libhdf5 when using conda toolchains.
+			multiarch_dir=`$CC -print-multiarch 2>/dev/null`
+			for d in /usr/lib/$multiarch_dir /usr/lib ; do
+				if test -d "$d" ; then
+					case " $HDF5_LDFLAGS " in
+						*" -L$d "*) ;;
+						*) HDF5_LDFLAGS="$HDF5_LDFLAGS -L$d" ;;
+					esac
+					case " $HDF5_LIBS " in
+						*" -L$d "*) ;;
+						*) HDF5_LIBS="-L$d $HDF5_LIBS" ;;
+					esac
+					break
+				fi
+			done
+			;;
+	esac
+fi
 AC_MSG_CHECKING(for HDF5 include)
 AC_MSG_RESULT($HDF5_CPPFLAGS)
 AC_MSG_CHECKING(for HDF5 libs)
@@ -164,45 +211,29 @@ dnl Set path to tiff directories with --with-tiff=include|lib
 dnl ------------------------------------------------------------------
 dnl
 AC_MSG_CHECKING(for TIFF include directory)
-if test "X$with_TIFF_include" = "X"; then	# Must look for it in standard places
-	if [ test -d /opt/homebrew/include ]; then	# homebrew
-		TIFF_INC=/opt/homebrew/include
-	elif [ test -d /sw/include ]; then	# fink
-		TIFF_INC=/sw/include
-	elif [ test -d /opt/local/include ]; then	# macports
-		TIFF_INC=/opt/local/include
-	elif [ test -d /usr/local/include ]; then
-		TIFF_INC=/usr/local/include
-	elif [ test -d /usr/include ]; then	# Ubuntu
-		TIFF_INC=/usr/include
-	elif [ test -d /opt/csw/include ]; then	# Blastwave
-		TIFF_INC=/opt/csw/include
-	elif [ test -d /opt/include ]; then
-		TIFF_INC=/opt/include
-	fi
+if test "X$with_tiff_include" = "X"; then	# Must look for tiffio.h in standard places
+	for d in /opt/homebrew/include /sw/include /opt/local/include /usr/local/include \
+		/usr/include/x86_64-linux-gnu /usr/include /opt/csw/include /opt/include ; do
+		if test -r "$d/tiffio.h" ; then
+			TIFF_INC=$d
+			break
+		fi
+	done
 else
 	TIFF_INC=$with_tiff_include
 fi
 AC_MSG_RESULT($TIFF_INC)
 AC_MSG_CHECKING(for TIFF library directory)
-if test "X$with_tiff_lib" = "X"; then	# Must look for it in standard places
-	if [ test -d /opt/homebrew/include ]; then	# fink
-		TIFF_LIB=/opt/homebrew/lib
-	elif [ test -d /sw/include ]; then	# fink
-		TIFF_LIB=/sw/lib
-	elif [ test -d /opt/local/include ]; then	# macports
-		TIFF_LIB=/opt/local/lib
-	elif [ test -d /usr/local/include ]; then
-		TIFF_LIB=/usr/local/lib
-	elif [ test -d /usr/include ]; then	# Ubuntu
-		TIFF_LIB=/usr/lib/x86_64-linux-gnu
-	elif [ test -d /opt/csw/include ]; then	# Blastwave
-		TIFF_LIB=/opt/csw/lib
-	elif [ test -d /opt/include ]; then
-		TIFF_LIB=/opt/lib
-	fi
+if test "X$with_tiff_lib" = "X"; then	# Must look for libtiff in standard places
+	for d in /opt/homebrew/lib /sw/lib /opt/local/lib /usr/local/lib /usr/lib/x86_64-linux-gnu /usr/lib \
+		/opt/csw/lib /opt/lib ; do
+		if test -r "$d/libtiff.so" || test -r "$d/libtiff.a" || test -r "$d/libtiff.dylib" ; then
+			TIFF_LIB=$d
+			break
+		fi
+	done
 else
-	TIFF_LIB=$with_tiff_lib/lib
+	TIFF_LIB=$with_tiff_lib
 fi
 AC_MSG_RESULT($TIFF_LIB)
 dnl
@@ -333,6 +364,30 @@ elif test "$os" = "HP-UX" ; then
 fi
 if test "X$flag" != "X" ; then
 	LDFLAGS="$LDFLAGS -Wl,$flag$rpath"
+fi
+if test "$os" = "Linux" ; then
+	case "$cc_target" in
+		*conda-linux-gnu*)
+			# Help conda ld resolve transitive deps of system libgmt/libtiff at link time.
+			if test "X$GMT_LIB_PATH" = "X" ; then
+				GMT_LIB_PATH=`echo "$GMT_LIB" | sed -n 's/.*-L\([^ ][^ ]*\).*/\1/p'`
+			fi
+			multiarch_dir=`$CC -print-multiarch 2>/dev/null`
+			link_search_dirs="$GMT_LIB_PATH $TIFF_LIB /usr/lib /lib"
+			if test "X$multiarch_dir" != "X" ; then
+				link_search_dirs="$GMT_LIB_PATH $TIFF_LIB /usr/lib/$multiarch_dir /lib/$multiarch_dir /usr/lib /lib"
+			fi
+			for d in $link_search_dirs ; do
+				if test ! -d "$d" ; then
+					continue
+				fi
+				case " $LDFLAGS " in
+					*" -Wl,-rpath-link=$d "*) ;;
+					*) LDFLAGS="$LDFLAGS -Wl,-rpath-link=$d" ;;
+				esac
+			done
+			;;
+	esac
 fi
 AC_MSG_RESULT($LDFLAGS)
 dnl

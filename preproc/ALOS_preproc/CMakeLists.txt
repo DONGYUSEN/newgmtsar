@@ -9,7 +9,7 @@ endif (HAVE_M_LIBRARY)
 
 include_directories (include)
 
-add_library (ALOS lib_src/utils.c lib_src/null_sio_struct.c
+add_library (ALOS lib_src/utils.c lib_src/image_sio_globals.c lib_src/null_sio_struct.c
 	lib_src/get_sio_struct.c lib_src/put_sio_struct.c lib_src/calc_dop.c
 	lib_src/hermite_c.c lib_src/ALOS_ldr_orbit.c lib_src/ALOSE_orbits_utils.c
 	lib_src/interpolate_ALOS_orbit.c lib_src/read_ALOS_sarleader.c lib_src/write_ALOS_LED.c

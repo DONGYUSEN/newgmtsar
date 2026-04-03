@@ -12,6 +12,7 @@
 #include "lib_functions.h"
 #include "tiffio.h"
 #include <math.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -147,15 +148,15 @@ int main(int argc, char **argv) {
 int assemble_tifs(TIFF **tif, TIFF *tif_out, int nfiles, int nb_start, int nb_end, int lpb) {
 
 	int ii, jj;
-	uint32 width, *height, height_all, ni = 0, nii, ni2 = 0;
+	uint32_t width, *height, height_all, ni = 0, nii, ni2 = 0;
 	short *buf;
-	uint16 s = 0;
+	uint16_t s = 0;
 
 	TIFFSetWarningHandler(NULL);
 	TIFFGetField(tif[0], TIFFTAG_IMAGEWIDTH, &width);
 
 	height_all = 0;
-	height = (uint32 *)malloc(sizeof(uint32) * nfiles);
+	height = (uint32_t *)malloc(sizeof(uint32_t) * nfiles);
 	for (ii = 0; ii < nfiles; ii++) {
 		TIFFGetField(tif[ii], TIFFTAG_IMAGELENGTH, &height[ii]);
 		height_all = height_all + height[ii];
@@ -169,7 +170,7 @@ int assemble_tifs(TIFF **tif, TIFF *tif_out, int nfiles, int nb_start, int nb_en
 
 	buf = (short *)_TIFFmalloc(TIFFScanlineSize(tif_out) * 2); // make some extra space in case the width differ for other images
 
-	printf("Writing TIFF image Width(%d) X Height(%d)...\n", width, (nb_end - nb_start + 1) * lpb);
+	printf("Writing TIFF image Width(%u) X Height(%d)...\n", (unsigned int)width, (nb_end - nb_start + 1) * lpb);
 
 	for (ii = 0; ii < nfiles; ii++) {
 		for (jj = 0; jj < height[ii]; jj++) {
@@ -324,7 +325,7 @@ int add_branch(struct tree **T, int nlmx, int qq, char *str, char *term, int mod
 
 int edit_leaf(struct tree **T, int qq, char *str, int mode) {
 
-	int ii, jj;
+	int ii;
 	double x1, x2;
 	char tmp_c[200];
 
@@ -332,7 +333,7 @@ int edit_leaf(struct tree **T, int qq, char *str, int mode) {
 		// add int numbers
 		ii = search_tree(T[0], str, tmp_c, 1, 0, 1);
 		x1 = str2double(tmp_c);
-		jj = search_tree(T[qq], str, tmp_c, 1, 0, 1);
+		(void)search_tree(T[qq], str, tmp_c, 1, 0, 1);
 		x2 = str2double(tmp_c);
 		sprintf(tmp_c, "%d", (int)(x1 + x2 + 1e-6));
 		strcpy(T[0][T[0][ii].firstchild].name, tmp_c);
@@ -340,7 +341,7 @@ int edit_leaf(struct tree **T, int qq, char *str, int mode) {
 	else if (mode == 2) {
 		// replace with the second
 		ii = search_tree(T[0], str, tmp_c, 1, 0, 1);
-		jj = search_tree(T[qq], str, tmp_c, 1, 0, 1);
+		(void)search_tree(T[qq], str, tmp_c, 1, 0, 1);
 		strcpy(T[0][T[0][ii].firstchild].name, tmp_c);
 	}
 

@@ -33,6 +33,43 @@
       exit 1
     endif
   endif
+
+# Avoid Conda/system mixed runtime libraries causing GMT/GDAL crashes.
+  if (-x /usr/bin/gmt) then
+    alias gmt /usr/bin/gmt
+  endif
+  if ($?LD_LIBRARY_PATH) then
+    set _gmtsar_ld_clean = ""
+    foreach _gmtsar_ldp (`echo "$LD_LIBRARY_PATH" | tr ':' ' '`)
+      if ("$_gmtsar_ldp" !~ "*miniforge3*" && "$_gmtsar_ldp" !~ "*mambaforge*" && "$_gmtsar_ldp" !~ "*anaconda*" && "$_gmtsar_ldp" !~ "*conda*") then
+        if ("x$_gmtsar_ld_clean" == "x") then
+          set _gmtsar_ld_clean = "$_gmtsar_ldp"
+        else
+          set _gmtsar_ld_clean = "${_gmtsar_ld_clean}:$_gmtsar_ldp"
+        endif
+      endif
+    end
+    if ("x$_gmtsar_ld_clean" == "x") then
+      unsetenv LD_LIBRARY_PATH
+    else
+      setenv LD_LIBRARY_PATH "$_gmtsar_ld_clean"
+    endif
+  endif
+  if ($?GDAL_DRIVER_PATH) then
+    if ("$GDAL_DRIVER_PATH" =~ "*miniforge3*" || "$GDAL_DRIVER_PATH" =~ "*mambaforge*" || "$GDAL_DRIVER_PATH" =~ "*anaconda*" || "$GDAL_DRIVER_PATH" =~ "*conda*") then
+      unsetenv GDAL_DRIVER_PATH
+    endif
+  endif
+  if ($?GDAL_DATA) then
+    if ("$GDAL_DATA" =~ "*miniforge3*" || "$GDAL_DATA" =~ "*mambaforge*" || "$GDAL_DATA" =~ "*anaconda*" || "$GDAL_DATA" =~ "*conda*") then
+      unsetenv GDAL_DATA
+    endif
+  endif
+  if ($?PROJ_LIB) then
+    if ("$PROJ_LIB" =~ "*miniforge3*" || "$PROJ_LIB" =~ "*mambaforge*" || "$PROJ_LIB" =~ "*anaconda*" || "$PROJ_LIB" =~ "*conda*") then
+      unsetenv PROJ_LIB
+    endif
+  endif
   
 #
 #  Read parameters from the configure file
@@ -45,8 +82,8 @@
     set conf = `echo "config.$SAT.txt"`
   endif
   # conf may need to be changed later on
-  set stage = `grep proc_stage $conf | awk '{print $3}'`
-  set s_stages = `grep skip_stage $conf | awk '{print $3}' | awk -F, '{print $1,$2,$3,$4,$5,$6}'`
+  set stage = `awk '$1=="proc_stage" && $2=="=" {print $3; exit}' $conf`
+  set s_stages = `awk '$1=="skip_stage" && $2=="=" {print $3; exit}' $conf | awk -F, '{print $1,$2,$3,$4,$5,$6}'`
   set skip_1 = 0
   set skip_2 = 0 
   set skip_3 = 0 
@@ -65,7 +102,7 @@
     echo ""
     echo "Skipping stage $s_stages ..."
   endif
-  set skip_master = `grep skip_master $conf | awk '{print $3}'`
+  set skip_master = `awk '$1=="skip_master" && $2=="=" {print $3; exit}' $conf`
   if ($skip_master == "") set skip_master = 0
   if ($skip_master == 2) then
     set skip_4 = 1

@@ -54,7 +54,7 @@ int main(int argc, char **argv) {
 	struct PRM prm1, prm2, prm3;
 	char stem[3][500], grid[3][500], tmp_str[200];
 	char *str2;
-	int nfile = 0, head1, head2, head3 = 0, minh, maxy, ovl12, ovl23 = 0, ii, jj, kk, k, n1, n2;
+	int nfile = 0, head1, head2, head3 = 0, minh, maxy, ovl12, ovl23 = 0, ii, jj, kk, k, n1, n2 = 0;
 	double incx, incy, wesn[4], inc[2];
 	double c_speed = 299792458;
 	double dt;
@@ -230,7 +230,8 @@ int main(int argc, char **argv) {
         n2 = atoi(argv[5]);
     }
     printf("Stitching location n1 = %d\n",n1);
-    printf("Stitching location n2 = %d\n",n2);
+    if (nfile == 3)
+        printf("Stitching location n2 = %d\n",n2);
     //printf("Stitching location n1 = %d\n",n1);
     //printf("Stitching location n2 = %d\n",n2);
 

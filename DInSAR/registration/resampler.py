@@ -580,6 +580,8 @@ def resample_with_yaml(
     sinc_window_size: int = 9,
     num_workers: int = 8,
     block_size: int = 2000,
+    min_valid_ratio: float = 0.05,
+    min_nonzero_ratio: float = 0.01,
 ):
     """根据YAML文件和偏移数据进行重采样
     
@@ -588,6 +590,8 @@ def resample_with_yaml(
         slave_yaml: 辅图像YAML文件路径
         output_yaml: 输出YAML文件路径
         offset_file: offset_estimate.txt文件路径
+        min_valid_ratio: 偏移场可采样覆盖率下限（低于该值判失败）
+        min_nonzero_ratio: 输出非零占比下限（低于该值判失败）
     """
     # 读取YAML文件
     master_data = read_yaml(master_yaml)
@@ -685,6 +689,33 @@ def resample_with_yaml(
         # 使用完整的多项式偏移场计算
         az_offsets, range_offsets = generate_offset_field((target_height, target_width), offset_data)
         print(f"  生成多项式偏移场，形状: {az_offsets.shape}")
+        print(
+            "  偏移场统计: "
+            f"az[min/med/max]=({float(np.nanmin(az_offsets)):.3f}, {float(np.nanmedian(az_offsets)):.3f}, {float(np.nanmax(az_offsets)):.3f}), "
+            f"rg[min/med/max]=({float(np.nanmin(range_offsets)):.3f}, {float(np.nanmedian(range_offsets)):.3f}, {float(np.nanmax(range_offsets)):.3f})"
+        )
+
+        # 预估重采样窗口覆盖率：若偏移场导致几乎全越界，直接判失败并让上层回退。
+        half = int(max(1, sinc_window_size // 2))
+        rows = np.arange(target_height, dtype=np.float32)[:, None]
+        cols = np.arange(target_width, dtype=np.float32)[None, :]
+        src_y = rows + az_offsets
+        src_x = cols + range_offsets
+        valid = (
+            np.isfinite(src_y)
+            & np.isfinite(src_x)
+            & (src_y >= half)
+            & (src_y < (slave_image.shape[0] - half))
+            & (src_x >= half)
+            & (src_x < (slave_image.shape[1] - half))
+        )
+        valid_ratio = float(np.count_nonzero(valid)) / float(valid.size)
+        print(f"  偏移场有效覆盖率: {valid_ratio:.4f}")
+        if valid_ratio < float(min_valid_ratio):
+            print(
+                "  重采样失败: 偏移场有效覆盖率过低，疑似偏移异常（例如 ESD 失稳导致的超大位移）。"
+            )
+            return False
         
         # 创建重采样器
         resampler = ImageResampler(sinc_window_size=sinc_window_size)
@@ -696,6 +727,14 @@ def resample_with_yaml(
             num_workers=num_workers,
             block_size=block_size,
         )
+
+        # 输出有效性检查：防止“结果文件存在但几乎全 0”的静默错误。
+        out_mag = np.abs(resampled_image)
+        nz_ratio = float(np.count_nonzero(out_mag > 0.0)) / float(out_mag.size)
+        print(f"  重采样输出非零占比: {nz_ratio:.4f}")
+        if nz_ratio < float(min_nonzero_ratio):
+            print("  重采样失败: 输出几乎全零，保留上一步结果。")
+            return False
         
         # 保存为TIFF文件
         output_tiff = output_yaml.replace('.yaml', '.tiff')

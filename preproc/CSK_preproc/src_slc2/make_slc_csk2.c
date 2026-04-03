@@ -110,7 +110,6 @@ int write_slc_hdf5(hid_t input, FILE *slc, double SLC_factor) {
 	short *buf, *tmp;
 	hsize_t dims[10];
 	hid_t memtype, dset, group;
-	herr_t status;
 
 	hdf5_read(dims, input, "/S01", "IMG", "", 'n');
 	height = (int)dims[0];
@@ -120,7 +119,7 @@ int write_slc_hdf5(hid_t input, FILE *slc, double SLC_factor) {
 	buf = (short *)malloc(height * width * 2 * sizeof(float));
 	tmp = (short *)malloc(width * 2 * sizeof(float));
 
-	printf("Data size %lld x %lld x %lld...\n", dims[0], dims[1], dims[2]);
+	printf("Data size %llu x %llu x %llu...\n", (unsigned long long)dims[0], (unsigned long long)dims[1], (unsigned long long)dims[2]);
     width = width - width%4;
     height = height - height%4;
 
@@ -129,7 +128,7 @@ int write_slc_hdf5(hid_t input, FILE *slc, double SLC_factor) {
 
 	memtype = H5Dget_type(dset);
 
-	status = H5Dread(dset, memtype, H5S_ALL, H5S_ALL, H5P_DEFAULT, buf);
+	(void)H5Dread(dset, memtype, H5S_ALL, H5S_ALL, H5P_DEFAULT, buf);
 
 	printf("Writing SLC..Image Size: %d X %d...\n", width, height);
 
@@ -168,10 +167,9 @@ int write_orb(state_vector *sv, FILE *fp, int n) {
 }
 
 int pop_led_hdf5(hid_t input, state_vector *sv) {
-	int i, count, iy;
+	int i, count = 200, iy;
 	char tmp_c[200], date[200];
 	double t[200], t0, t_tmp;
-	unsigned short tmp_i[200];
 	double x[600], v[600];
 
     for (i=0;i<200;i++) {
@@ -356,10 +354,8 @@ int pop_prm_hdf5(struct PRM *prm, hid_t input, char *file_name) {
 }
 
 int hdf5_read(void *output, hid_t file, char *n_group, char *n_dset, char *n_attr, int c) {
-	hid_t memtype, type, group = -1, dset = -1, attr = -1, tmp_id, space;
-	herr_t status;
+	hid_t memtype = H5T_NATIVE_INT, type, group = -1, dset = -1, attr = -1, tmp_id, space;
 	size_t sdim;
-	int ndims;
 
 	tmp_id = file;
 	if (strlen(n_group) > 0) {
@@ -380,7 +376,7 @@ int hdf5_read(void *output, hid_t file, char *n_group, char *n_dset, char *n_att
 		type = H5Aget_type(tmp_id);
 		sdim = H5Tget_size(type);
 		sdim++;
-		status = H5Tset_size(memtype, sdim);
+		(void)H5Tset_size(memtype, sdim);
 	}
 	else if (c == 'd') {
 		memtype = H5T_NATIVE_DOUBLE;
@@ -391,13 +387,16 @@ int hdf5_read(void *output, hid_t file, char *n_group, char *n_dset, char *n_att
 	else if (c == 'f') {
 		memtype = H5T_NATIVE_FLOAT;
 	}
+	else {
+		return (-1);
+	}
 
 	if (tmp_id == attr) {
-		status = H5Aread(tmp_id, memtype, output);
+		(void)H5Aread(tmp_id, memtype, output);
 	}
 	else if (tmp_id == dset && c == 'n') {
 		space = H5Dget_space(dset);
-		ndims = H5Sget_simple_extent_dims(space, output, NULL);
+		(void)H5Sget_simple_extent_dims(space, output, NULL);
 	}
 	else {
 		return (-1);

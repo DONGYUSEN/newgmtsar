@@ -230,10 +230,23 @@ def read_yaml_config(yaml_file):
         if isinstance(s, (int, float)):
             return float(s)
         ss = str(s).strip()
+        if not ss:
+            return None
+        # 兼容“epoch 数字字符串”
+        try:
+            return float(ss)
+        except Exception:
+            pass
         # 兼容 'Z'
         if ss.endswith('Z'):
             ss = ss[:-1] + '+00:00'
-        return datetime.datetime.fromisoformat(ss).timestamp()
+        dt = datetime.datetime.fromisoformat(ss)
+        # 关键：无时区时间统一按 UTC 解释，避免被本地时区偏移。
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=datetime.timezone.utc)
+        else:
+            dt = dt.astimezone(datetime.timezone.utc)
+        return dt.timestamp()
     
     # 从 YAML 解析参数
     meta = ycfg.get('metadata', {}) or {}
@@ -346,21 +359,35 @@ def build_latlon_grid_from_corners(corners, shape):
     需要角点键：top_left/top_right/bottom_left/bottom_right。
     """
     rows, cols = int(shape[0]), int(shape[1])
-    required = ("top_left", "top_right", "bottom_left", "bottom_right")
-    for k in required:
-        if k not in corners or not isinstance(corners[k], dict):
-            raise ValueError(f"corner_coordinates 缺少角点: {k}")
-        if ("lat" not in corners[k]) or ("lon" not in corners[k]):
-            raise ValueError(f"角点 {k} 缺少 lat/lon")
+    # 兼容两套角点命名：
+    # - top_left/top_right/bottom_left/bottom_right
+    # - upper_left/upper_right/lower_left/lower_right（当前准备流程使用）
+    alias = {
+        "top_left": ("top_left", "upper_left"),
+        "top_right": ("top_right", "upper_right"),
+        "bottom_left": ("bottom_left", "lower_left"),
+        "bottom_right": ("bottom_right", "lower_right"),
+    }
+    cc = {}
+    for std_key, cands in alias.items():
+        found = None
+        for k in cands:
+            v = corners.get(k) if isinstance(corners, dict) else None
+            if isinstance(v, dict) and ("lat" in v) and ("lon" in v):
+                found = v
+                break
+        if found is None:
+            raise ValueError(f"corner_coordinates 缺少角点: {std_key} (aliases={cands})")
+        cc[std_key] = found
 
-    lat_tl = float(corners["top_left"]["lat"])
-    lon_tl = float(corners["top_left"]["lon"])
-    lat_tr = float(corners["top_right"]["lat"])
-    lon_tr = float(corners["top_right"]["lon"])
-    lat_bl = float(corners["bottom_left"]["lat"])
-    lon_bl = float(corners["bottom_left"]["lon"])
-    lat_br = float(corners["bottom_right"]["lat"])
-    lon_br = float(corners["bottom_right"]["lon"])
+    lat_tl = float(cc["top_left"]["lat"])
+    lon_tl = float(cc["top_left"]["lon"])
+    lat_tr = float(cc["top_right"]["lat"])
+    lon_tr = float(cc["top_right"]["lon"])
+    lat_bl = float(cc["bottom_left"]["lat"])
+    lon_bl = float(cc["bottom_left"]["lon"])
+    lat_br = float(cc["bottom_right"]["lat"])
+    lon_br = float(cc["bottom_right"]["lon"])
 
     u = np.linspace(0.0, 1.0, cols, dtype=np.float64)
     v = np.linspace(0.0, 1.0, rows, dtype=np.float64)
@@ -384,36 +411,41 @@ def load_ground_grid(master_config, vrt_shape, geosar_hdf=None):
 
     # 1) geosar HDF
     if geosar_hdf and os.path.exists(geosar_hdf):
-        with h5py.File(geosar_hdf, 'r') as f:
-            lat = None
-            lon = None
-            h = None
+        try:
+            with h5py.File(geosar_hdf, 'r') as f:
+                lat = None
+                lon = None
+                h = None
 
-            for k in ("sar_lat", "lat_grid"):
-                if k in f:
-                    lat = np.asarray(f[k][:], dtype=np.float64)
-                    break
-            for k in ("sar_lon", "lon_grid"):
-                if k in f:
-                    lon = np.asarray(f[k][:], dtype=np.float64)
-                    break
-            for k in ("sar_dem", "sar_dem_raw"):
-                if k in f:
-                    h = np.asarray(f[k][:], dtype=np.float64)
-                    break
+                for k in ("sar_lat", "lat_grid"):
+                    if k in f:
+                        lat = np.asarray(f[k][:], dtype=np.float64)
+                        break
+                for k in ("sar_lon", "lon_grid"):
+                    if k in f:
+                        lon = np.asarray(f[k][:], dtype=np.float64)
+                        break
+                for k in ("sar_dem", "sar_dem_raw"):
+                    if k in f:
+                        h = np.asarray(f[k][:], dtype=np.float64)
+                        break
 
-        if (lat is not None) and (lon is not None):
-            lat = _resample_to_shape(lat, target_shape, order=1)
-            lon = _resample_to_shape(lon, target_shape, order=1)
-            if h is None:
-                h = np.zeros(target_shape, dtype=np.float64)
-            else:
-                h = _resample_to_shape(h, target_shape, order=1)
-            # geosar 反推网格可能有大量空洞；为 LOS 分解需要全覆盖，这里做最近邻补齐。
-            lat = _fill_nan_nearest_2d(lat)
-            lon = _fill_nan_nearest_2d(lon)
-            h = _fill_nan_nearest_2d(h)
-            return lat, lon, h, "geosar_hdf"
+            if (lat is not None) and (lon is not None):
+                lat = _resample_to_shape(lat, target_shape, order=1)
+                lon = _resample_to_shape(lon, target_shape, order=1)
+                if h is None:
+                    h = np.zeros(target_shape, dtype=np.float64)
+                else:
+                    h = _resample_to_shape(h, target_shape, order=1)
+                # geosar 反推网格可能有大量空洞；为 LOS 分解需要全覆盖，这里做最近邻补齐。
+                lat = _fill_nan_nearest_2d(lat)
+                lon = _fill_nan_nearest_2d(lon)
+                h = _fill_nan_nearest_2d(h)
+                return lat, lon, h, "geosar_hdf"
+            print(f"警告: geosar 网格缺少 lat/lon，回退到 YAML 角点: {geosar_hdf}")
+        except Exception as e:
+            # 关键兜底：geosar 网格全 NaN 或读取异常时，避免流程中断。
+            print(f"警告: geosar 网格不可用（{e}），回退到 YAML 角点网格")
 
     # 2) YAML 角点双线性 + 零高程
     corners = master_config.get("corner_coordinates", {}) or {}
@@ -451,12 +483,62 @@ def calculate_baseline(master_config, slave_config, vrt_shape, lat_grid, lon_gri
     rows, cols = int(vrt_shape[0]), int(vrt_shape[1])
     N = rows * cols
 
+    def _resolve_time_span(cfg, nrows, tag):
+        tmin = float(cfg.get("tmin", 0.0))
+        tmax = float(cfg.get("tmax", 0.0))
+        t0_raw = float(cfg.get("t0", tmin))
+        t1_raw = float(cfg.get("t1", tmax))
+        prf = float(cfg.get("prf", 0.0) or 0.0)
+        expected_dur = ((max(1, int(nrows)) - 1) / prf) if prf > 1e-9 else None
+
+        in0 = (tmin <= t0_raw <= tmax) if (tmax > tmin) else True
+        in1 = (tmin <= t1_raw <= tmax) if (tmax > tmin) else True
+
+        # 优先使用“有效端点 + PRF 估计时长”重建时间窗，避免 first/last 混入另一景时刻。
+        if in0 and in1 and (t1_raw > t0_raw):
+            t0, t1 = t0_raw, t1_raw
+        elif (expected_dur is not None) and (expected_dur > 0.0):
+            if in0:
+                t0 = t0_raw
+                t1 = t0 + expected_dur
+            elif in1:
+                t1 = t1_raw
+                t0 = t1 - expected_dur
+            else:
+                t0 = tmin
+                t1 = t0 + expected_dur
+        else:
+            t0 = t0_raw if in0 else tmin
+            t1 = t1_raw if in1 and (t1_raw > t0) else tmax
+
+        if tmax > tmin:
+            t0 = float(np.clip(t0, tmin, tmax))
+            t1 = float(np.clip(t1, tmin, tmax))
+        if t1 <= t0:
+            t1 = min(tmax, t0 + 1e-3) if (tmax > tmin) else (t0 + 1e-3)
+
+        dur = float(t1 - t0)
+        if (expected_dur is not None) and (expected_dur > 0.0) and (
+            (dur <= 0.0) or (dur > expected_dur * 20.0)
+        ):
+            t1_new = t0 + expected_dur
+            if tmax > tmin:
+                t1_new = float(np.clip(t1_new, t0, tmax))
+            if t1_new <= t0 and tmax > t0:
+                t1_new = tmax
+            print(
+                f"警告: {tag} 时间窗异常，按 PRF 约束修正 "
+                f"({dur:.6f}s -> {float(t1_new - t0):.6f}s)"
+            )
+            t1 = float(t1_new)
+        return t0, t1
+
     # 每行对应一个方位时间，距离向沿行内复用
     row_rel = np.linspace(0.0, 1.0, rows, dtype=np.float64)
     rel = np.repeat(row_rel, cols)
 
-    master_t0, master_t1 = float(master_config['t0']), float(master_config['t1'])
-    slave_t0, slave_t1 = float(slave_config['t0']), float(slave_config['t1'])
+    master_t0, master_t1 = _resolve_time_span(master_config, rows, "master")
+    slave_t0, slave_t1 = _resolve_time_span(slave_config, rows, "slave")
     master_times = master_t0 + rel * (master_t1 - master_t0)
     slave_times = slave_t0 + rel * (slave_t1 - slave_t0)
 

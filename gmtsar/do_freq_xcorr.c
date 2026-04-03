@@ -20,7 +20,8 @@ void fft_multiply(void *API, int N, int M, struct FCOMPLEX *c1, struct FCOMPLEX 
 	/* normalize by absolute values				*/
 	for (i = 0; i < M; i++) {
 		for (j = 0; j < N; j++) {
-			isign = (int)lrint(pow(-1.0, (double)(i + j)));
+			/* fast alternating sign: (-1)^(i+j) */
+			isign = ((i + j) & 1) ? -1 : 1;
 			c3[i * N + j] = RCmul(isign, Cmul((c1[i * N + j]), (Conjg(c2[i * N + j]))));
 			/*
 			                        if (norm_flag) {
@@ -73,7 +74,8 @@ void do_freq_corr(void *API, struct xcorr *xc, int iloc) {
 	}
 
 	if ((ipeak == -999.0) || (jpeak == -999.0)) {
-		fprintf(stderr, "error! jpeak %f ipeak %f cmax %lf xc %f \n", jpeak, ipeak, cmax, xc->corr[100]);
+		double corr_sample = ((xc->nxc * xc->nyc) > 0) ? xc->corr[0] : 0.0;
+		fprintf(stderr, "error! jpeak %f ipeak %f cmax %lf xc %f \n", jpeak, ipeak, cmax, corr_sample);
 		exit(1);
 	}
 

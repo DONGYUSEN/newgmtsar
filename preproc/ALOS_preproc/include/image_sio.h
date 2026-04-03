@@ -1,4 +1,7 @@
 /* taken from soi.h */
+#ifndef IMAGE_SIO_H
+#define IMAGE_SIO_H
+
 #include <math.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -159,23 +162,33 @@ radar_wavelength	lambda
 rng_spec_wgt		rhww
 
 */
-int verbose;         /* controls minimal level of output 	*/
-int debug;           /* more output 				*/
-int roi;             /* more output 				*/
-int swap;            /* whether to swap bytes 		*/
-int quad_pol;        /* quad polarization data 		*/
-int ALOS_format;     /* AUIG:  ALOS_format = 0  		*/
-                     /* ERSDAC:  ALOS_format = 1  		*/
-                     /* ALOS2:   ALOS_format =2              */
-int force_slope;     /* whether to set the slope	 	*/
-int dopp;            /* whether to calculate doppler 	*/
-int quiet_flag;      /* reduce output			*/
-int SAR_mode;        /* 0 => high-res 			*/
-                     /* 1 => wide obs 			*/
-                     /* 2 => polarimetry 			*/
-                     /* from ALOS Product Format 3-2		*/
-int prefix_off;      /* offset needed for ALOS-2 prefix size */
-double forced_slope; /* value to set chirp_slope to          */
-double tbias;        /* time bias for clock bias             */
-double rbias;        /* range bias for near range corr       */
-double slc_fact;     /* factor to convert float to int slc   */
+#ifdef IMAGE_SIO_DEFINE_GLOBALS
+#define IMAGE_SIO_EXTERN
+#else
+#define IMAGE_SIO_EXTERN extern
+#endif
+
+IMAGE_SIO_EXTERN int verbose;         /* controls minimal level of output 	*/
+IMAGE_SIO_EXTERN int debug;           /* more output 				*/
+IMAGE_SIO_EXTERN int roi;             /* more output 				*/
+IMAGE_SIO_EXTERN int swap;            /* whether to swap bytes 		*/
+IMAGE_SIO_EXTERN int quad_pol;        /* quad polarization data 		*/
+IMAGE_SIO_EXTERN int ALOS_format;     /* AUIG:  ALOS_format = 0  		*/
+                                       /* ERSDAC:  ALOS_format = 1  		*/
+                                       /* ALOS2:   ALOS_format =2              */
+IMAGE_SIO_EXTERN int force_slope;     /* whether to set the slope	 	*/
+IMAGE_SIO_EXTERN int dopp;            /* whether to calculate doppler 	*/
+IMAGE_SIO_EXTERN int quiet_flag;      /* reduce output			*/
+IMAGE_SIO_EXTERN int SAR_mode;        /* 0 => high-res 			*/
+                                       /* 1 => wide obs 			*/
+                                       /* 2 => polarimetry 			*/
+                                       /* from ALOS Product Format 3-2		*/
+IMAGE_SIO_EXTERN int prefix_off;      /* offset needed for ALOS-2 prefix size */
+IMAGE_SIO_EXTERN double forced_slope; /* value to set chirp_slope to          */
+IMAGE_SIO_EXTERN double tbias;        /* time bias for clock bias             */
+IMAGE_SIO_EXTERN double rbias;        /* range bias for near range corr       */
+IMAGE_SIO_EXTERN double slc_fact;     /* factor to convert float to int slc   */
+
+#undef IMAGE_SIO_EXTERN
+
+#endif /* IMAGE_SIO_H */

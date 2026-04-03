@@ -71,15 +71,75 @@ void read_real_float_grid(struct GMT_GRID *f, struct FCOMPLEX *d, int iy, int np
 }
 
 /*-------------------------------------------------------*/
+static int ensure_xcorr_read_buffers(struct xcorr *xc) {
+	size_t need_m_short, need_s_short, need_m_float, need_s_float;
+	short *new_short;
+	float *new_float;
+
+	if (!xc)
+		return 0;
+
+	need_m_short = (size_t)2 * (size_t)xc->m_nx;
+	need_s_short = (size_t)2 * (size_t)xc->s_nx;
+	need_m_float = (size_t)2 * (size_t)xc->m_nx;
+	need_s_float = (size_t)2 * (size_t)xc->s_nx;
+
+	if ((xc->tmp_m == NULL) || (xc->tmp_m_cap < need_m_short)) {
+		new_short = (short *)realloc(xc->tmp_m, need_m_short * sizeof(short));
+		if (!new_short)
+			return 0;
+		xc->tmp_m = new_short;
+		xc->tmp_m_cap = need_m_short;
+	}
+	if ((xc->tmp_s == NULL) || (xc->tmp_s_cap < need_s_short)) {
+		new_short = (short *)realloc(xc->tmp_s, need_s_short * sizeof(short));
+		if (!new_short)
+			return 0;
+		xc->tmp_s = new_short;
+		xc->tmp_s_cap = need_s_short;
+	}
+	if ((xc->tmp2_m == NULL) || (xc->tmp2_m_cap < need_m_float)) {
+		new_float = (float *)realloc(xc->tmp2_m, need_m_float * sizeof(float));
+		if (!new_float)
+			return 0;
+		xc->tmp2_m = new_float;
+		xc->tmp2_m_cap = need_m_float;
+	}
+	if ((xc->tmp2_s == NULL) || (xc->tmp2_s_cap < need_s_float)) {
+		new_float = (float *)realloc(xc->tmp2_s, need_s_float * sizeof(float));
+		if (!new_float)
+			return 0;
+		xc->tmp2_s = new_float;
+		xc->tmp2_s_cap = need_s_float;
+	}
+
+	return 1;
+}
+
+/*-------------------------------------------------------*/
+void free_xcorr_read_buffers(struct xcorr *xc) {
+	if (!xc)
+		return;
+	free(xc->tmp_m);
+	free(xc->tmp_s);
+	free(xc->tmp2_m);
+	free(xc->tmp2_s);
+	xc->tmp_m = NULL;
+	xc->tmp_s = NULL;
+	xc->tmp2_m = NULL;
+	xc->tmp2_s = NULL;
+	xc->tmp_m_cap = 0;
+	xc->tmp_s_cap = 0;
+	xc->tmp2_m_cap = 0;
+	xc->tmp2_s_cap = 0;
+}
+
+/*-------------------------------------------------------*/
 void read_xcorr_data(struct xcorr *xc, int iloc) {
 	int iy, ishft;
-	short *tmp_m, *tmp_s;
-	float *tmp2_m, *tmp2_s;
 
-	tmp_m = (short *)malloc(2 * xc->m_nx * sizeof(short));  /* whole line */
-	tmp2_m = (float *)malloc(2 * xc->m_nx * sizeof(float)); /* whole line */
-	tmp_s = (short *)malloc(2 * xc->s_nx * sizeof(short));  /* whole line */
-	tmp2_s = (float *)malloc(2 * xc->s_nx * sizeof(float)); /* whole line */
+	if (!ensure_xcorr_read_buffers(xc))
+		die("read_xcorr_data: failed to allocate reusable buffers", "");
 
 	/* set locations and read data for master       */
 	/* read whole line at correct y offset          */
@@ -89,9 +149,9 @@ void read_xcorr_data(struct xcorr *xc, int iloc) {
 		fprintf(stderr, " reading data from master at y = %d and %d items\n", iy, xc->m_nx);
 
 	if (xc->format == 0)
-		read_complex_short2(xc->data1, xc->d1, iy, xc->npy, xc->m_nx, tmp_m);
+		read_complex_short2(xc->data1, xc->d1, iy, xc->npy, xc->m_nx, xc->tmp_m);
 	if (xc->format == 1)
-		read_real_float2(xc->data1, xc->d1, iy, xc->npy, xc->m_nx, tmp2_m);
+		read_real_float2(xc->data1, xc->d1, iy, xc->npy, xc->m_nx, xc->tmp2_m);
 	if (xc->format == 2)
 		read_real_float_grid(xc->D1, xc->d1, iy, xc->npy, xc->m_nx, xc->m_ny);
 
@@ -102,14 +162,9 @@ void read_xcorr_data(struct xcorr *xc, int iloc) {
 	if (debug)
 		fprintf(stderr, " reading data from aligned at y = %d and %d items\n", iy, xc->s_nx);
 	if (xc->format == 0)
-		read_complex_short2(xc->data2, xc->d2, iy, xc->npy, xc->s_nx, tmp_s);
+		read_complex_short2(xc->data2, xc->d2, iy, xc->npy, xc->s_nx, xc->tmp_s);
 	if (xc->format == 1)
-		read_real_float2(xc->data2, xc->d2, iy, xc->npy, xc->s_nx, tmp2_s);
+		read_real_float2(xc->data2, xc->d2, iy, xc->npy, xc->s_nx, xc->tmp2_s);
 	if (xc->format == 2)
 		read_real_float_grid(xc->D2, xc->d2, iy, xc->npy, xc->s_nx, xc->s_ny);
-
-	free((char *)tmp_m);
-	free((char *)tmp2_m);
-	free((char *)tmp_s);
-	free((char *)tmp2_s);
 }

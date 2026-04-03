@@ -1,0 +1,106 @@
+<!-- /*
+* @Descripttion: index page
+* @version: 
+* @Author: Xuesong_Zhang
+* @Date: 2020-10-26 20:41:46
+* @LastEditors: Xuesong_Zhang
+* @LastEditTime: 2022-4-19 14:55:35
+*/ -->
+<!DOCTYPE html>
+<html>
+<head>
+     <!-- Global site tag (gtag.js) - Google Analytics -->
+    <script async src="https://www.googletagmanager.com/gtag/js?id=G-L8QB1SGJSQ"></script>
+    <script>
+        window.dataLayer = window.dataLayer || [];
+        function gtag(){dataLayer.push(arguments);}
+        gtag('js', new Date());
+        gtag('config', 'G-L8QB1SGJSQ');
+    </script>
+	<title>GACOS</title>
+	<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+	<link rel="stylesheet" href="https://cdn.staticfile.org/twitter-bootstrap/3.3.7/css/bootstrap.min.css">
+	<script src="https://cdn.staticfile.org/jquery/2.1.1/jquery.min.js"></script>
+	<script src="https://cdn.staticfile.org/popper.js/1.15.0/umd/popper.min.js"></script>
+	<script src="https://cdn.staticfile.org/twitter-bootstrap/3.3.7/js/bootstrap.min.js"></script>
+	<script src="static/js/bootstrapValidator.min.js"></script>
+    <link href="static/css/bootstrapValidator.min.css" rel="stylesheet" />
+	<script src="static/js/ol.js"></script>
+	<link rel="stylesheet" href="static/css/ol.css">
+	<link rel="stylesheet" href="static/css/index.css">
+        <link rel="icon" href="./static/img/gacos_ico.png" type="image/icon type">
+</head>
+<body>
+<input type="hidden" id="hiddeninput" onclick="upOSM(this);">
+<div id="top_banner"><br>
+	<h1 class="text-center">Generic Atmospheric Correction Online Service for InSAR (GACOS)</h1><br>
+</div>
+
+<div class="body col-sm-12" style="min-height: 580px;">
+    <div class="col-sm-12" style="margin:15px;padding: 15px;">
+        <h3 class="text-center h31 map_div"> 
+            Thanks for using GACOS! <br/>        </h3>
+        <p class="col-sm-8 col-sm-offset-2 map_div">
+            We have received your request which is summarized below:        </p>
+    </div>
+    <div class="col-sm-6 col-sm-offset-3">
+        <table class="table table-striped">
+            <thead>
+            <tr>
+                <th>Parameter</th>
+                <th>Value</th>
+            </tr>
+            </thead>
+            <tbody>
+            <tr>
+                <td>Your email address</td>
+                <td>46712521@qq.com</td>
+            </tr>
+            <tr>
+                <td>Minimum latitude</td>
+                <td>29.530556</td>
+            </tr>
+            <tr>
+                <td>Maximum latitude</td>
+                <td>29.883056</td>
+            </tr>
+            <tr>
+                <td>Minimum longitude</td>
+                <td>94.715556</td>
+            </tr>
+            <tr>
+                <td>Maximum longitude</td>
+                <td>95.120556</td>
+            </tr>
+            <tr>
+                <td>Time of day</td>
+                <td>4.6666666666667</td>
+            </tr>
+            <tr>
+                <td>Output format</td>
+                <td>
+                Geotiff                 </td>
+            </tr>
+            <tr>
+                <td>Date list</td>
+                <td>20231110<br/>20231121<br/></td>
+            </tr>
+            </tbody>
+        </table>
+    </div>
+        <div class="col-sm-8 col-sm-offset-2 text-center map_div">
+        <p>
+            Please allow us some time to process your request. This may take several minutes or even hours, depending on how many and which dates you have requested. Once finished, we will send you an email. If not found, please have a look at your spam/junk folder.<br><br>Please do not submit too many requests in a short period. <br><br>        </p>
+    </div>
+    <div class="col-sm-8 col-sm-offset-2">
+        <a href="./index.html"><button type="button" class="btn btn-primary btn-lg btn-block">Home</button></a>
+    </div>
+</div>
+<div class="jumbotron text-center  col-sm-12">
+  <a href="https://comet.nerc.ac.uk"><img src="./static/img/COMET.png"  height="100%" class="bot_img" >
+  <a href="https://www.ncl.ac.uk"><img src="./static/img/Newcastle-University-logo.png" height="90%" class="bot_img">
+  <a href="http://en.chd.edu.cn"><img src="./static/img/ca-logo.png" height="90%" class="bot_img">
+  <a href="https://comet.nerc.ac.uk/comet-lics-portal"><img src="./static/img/lics-logo.jpg" height="90%" class="bot_img" >
+</div>
+</body>
+</html>

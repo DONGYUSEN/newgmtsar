@@ -1,0 +1,24 @@
+# Exclude large/irrelevant project subtree requested by user
+DInSAR/
+
+# VCS and editor files
+.git/
+.github/
+.vscode/
+
+# Build artifacts
+bin/
+share/
+**/*.o
+**/*.a
+**/*.so
+**/*.so.*
+**/*.pyc
+__pycache__/
+
+# Local data/output directories
+SLC/
+atom/
+isce2-2.6.4/
+ORBITS/
+*.tar

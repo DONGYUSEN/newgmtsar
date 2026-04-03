@@ -79,11 +79,16 @@ def write_sar_latlon_grids_from_dem_mapping(
         raise ValueError(f"不支持的 compress: {compress}")
 
     # 创建 dataset（默认填 NaN）
+    # HDF5 约束：chunk 每个维度不能超过数据维度；小 burst 需要自动收缩 chunk。
+    chunk_az = max(1, min(int(chunk[0]), sar_az_size))
+    chunk_rg = max(1, min(int(chunk[1]), sar_range_size))
+    chunk_eff = (chunk_az, chunk_rg)
+
     lat_ds = f_h5.create_dataset(
         "sar_lat",
         shape=(sar_az_size, sar_range_size),
         dtype=dt,
-        chunks=tuple(chunk),
+        chunks=chunk_eff,
         compression=comp,
         shuffle=True,
         fillvalue=np.nan,
@@ -92,7 +97,7 @@ def write_sar_latlon_grids_from_dem_mapping(
         "sar_lon",
         shape=(sar_az_size, sar_range_size),
         dtype=dt,
-        chunks=tuple(chunk),
+        chunks=chunk_eff,
         compression=comp,
         shuffle=True,
         fillvalue=np.nan,
@@ -1356,10 +1361,23 @@ class Geo2Rdr:
             if isinstance(s, (int, float)):
                 return float(s)
             ss = str(s).strip()
+            if not ss:
+                return None
+            # 兼容“epoch 数字字符串”
+            try:
+                return float(ss)
+            except Exception:
+                pass
             # 兼容 'Z'
             if ss.endswith('Z'):
                 ss = ss[:-1] + '+00:00'
-            return datetime.datetime.fromisoformat(ss).timestamp()
+            dt = datetime.datetime.fromisoformat(ss)
+            # 关键：无时区时间统一按 UTC 解释，避免被本地时区偏移。
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=datetime.timezone.utc)
+            else:
+                dt = dt.astimezone(datetime.timezone.utc)
+            return dt.timestamp()
         
         # 从 master.yaml 解析参数（保持与 dem2sar_full.py 一致：时间用 epoch seconds）
         meta = ycfg.get('metadata', {}) or {}
@@ -2227,16 +2245,29 @@ class Geo2Rdr:
             if isinstance(s, (int, float)):
                 return float(s)
             ss = str(s).strip()
+            if not ss:
+                return None
+            # 兼容“epoch 数字字符串”
+            try:
+                return float(ss)
+            except Exception:
+                pass
             if ss.endswith('Z'):
                 ss = ss[:-1] + '+00:00'
-            return datetime.datetime.fromisoformat(ss).timestamp()
+            dt = datetime.datetime.fromisoformat(ss)
+            # 关键：无时区时间统一按 UTC 解释，避免被本地时区偏移。
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=datetime.timezone.utc)
+            else:
+                dt = dt.astimezone(datetime.timezone.utc)
+            return dt.timestamp()
 
         def _format_epoch_like_template(epoch, template):
             """
             按 template 的时区/格式风格回写时间：
             - template 以 Z 结尾 -> 输出 UTC+Z
             - template 含显式时区 -> 输出相同时区偏移
-            - 否则输出无时区信息的本地时间 ISO 字符串
+            - 否则输出无时区信息的 UTC 时间 ISO 字符串
             """
             tpl = str(template).strip() if template is not None else ""
             if tpl.endswith("Z"):
@@ -2252,7 +2283,8 @@ class Geo2Rdr:
                 dt = datetime.datetime.fromtimestamp(float(epoch), tz=dt_tpl.tzinfo)
                 return dt.isoformat(timespec="microseconds")
 
-            dt = datetime.datetime.fromtimestamp(float(epoch))
+            # template 无时区时，按 UTC 生成“无时区字符串”，避免本地时区漂移。
+            dt = datetime.datetime.fromtimestamp(float(epoch), tz=datetime.timezone.utc).replace(tzinfo=None)
             return dt.isoformat(timespec="microseconds")
 
         with open(target_yaml, "r", encoding="utf-8") as f:

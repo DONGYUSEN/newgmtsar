@@ -20,6 +20,7 @@
 #include "stateV.h"
 #include "tiffio.h"
 #include <math.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -240,8 +241,8 @@ int pop_burst(struct PRM *prm, tree *xml_tree, struct burst_bounds *bb, char *fi
 
 	char tmp_c[200], tmp_cc[60000];
 	double tmp_d, dt, t[100];
-	int i, j, k, nl = 0, nlf, ntl, count, lpb, tmp_i, flag, flag0;
-	int k_start, kC;
+	int i, j, k, nl = 0, nlf, count, lpb, tmp_i, flag, flag0;
+	int k_start = 0, kC;
 	int *kF, *ksa, *ksr, *kea, *ker, *kover;
 	double t0 = -1., time;
 	char *cflag, *cflag_orig;
@@ -337,8 +338,6 @@ int pop_burst(struct PRM *prm, tree *xml_tree, struct burst_bounds *bb, char *fi
 	search_tree(xml_tree, "/product/swathTiming/burstList/", tmp_c, 3, 0, 1);
 	count = (int)str2double(tmp_c);
 	// count = 1;
-	search_tree(xml_tree, "/product/imageAnnotation/imageInformation/numberOfLines/", tmp_c, 1, 0, 1);
-	ntl = (int)str2double(tmp_c);
 	search_tree(xml_tree, "/product/swathTiming/linesPerBurst/", tmp_c, 1, 4, 0);
 	lpb = (int)str2double(tmp_c);
 	nlf = count * lpb;
@@ -444,19 +443,19 @@ int shift_write_slcs(void *API, struct PRM *prm, tree *xml_tree, burst_bounds *b
                      int imode, double rng, double azi, double stretch_a, double a_stretch_a, double stretch_r,
                      double a_stretch_r) {
 
-	uint16 s = 0;
-	uint16 *buf;
-	uint32 it;
+	uint16_t s = 0;
+	uint16_t *buf;
+	uint32_t it;
 	short *tmp, *brst;
 	float *rtmp;
 	int ii, jj, nl, k, k2, kk;
 	int count, lpb, nlf, width2, nclip = 0;
-	uint32 width, height, widthi;
+	uint32_t width, height, widthi;
 	char tmp_c[200];
 	fcomplex *cbrst, *cramp;
 	fcomplex *fft_vec_rng, *fft_vec_azi;
 	int ranfft_rng, ranfft_azi;
-	double rtest, itest, azi_new;
+	double rtest, itest, azi_new = 0.0;
 	int cl;
 
 	// get the burst information and compare with the TIFF file
@@ -480,7 +479,7 @@ int shift_write_slcs(void *API, struct PRM *prm, tree *xml_tree, burst_bounds *b
 	brst = (short *)malloc(lpb * width2 * sizeof(short));
 	cbrst = (fcomplex *)malloc(lpb * width * sizeof(fcomplex));
 	cramp = (fcomplex *)malloc(lpb * width * sizeof(fcomplex));
-	buf = (uint16 *)_TIFFmalloc(TIFFScanlineSize(tif));
+	buf = (uint16_t *)_TIFFmalloc(TIFFScanlineSize(tif));
 	tmp = (short *)malloc(width * 2 * sizeof(short));
 	rtmp = (float *)malloc(width * 2 * sizeof(float));
 	ranfft_rng = fft_bins(width);
@@ -493,7 +492,7 @@ int shift_write_slcs(void *API, struct PRM *prm, tree *xml_tree, burst_bounds *b
 	if (imode == 0)
 		return (1);
 
-	printf("Writing SLC..Image Size: %d X %d...\n", width, nl);
+	printf("Writing SLC..Image Size: %u X %d...\n", (unsigned int)width, nl);
 	it = 0;
 
 	// loop over the bursts
@@ -634,7 +633,7 @@ int dramp_dmod(tree *xml_tree, int nb, fcomplex *cramp, int lpb, int width, doub
 	double fnc[3], fka[3];
 	double *eta, *etaref, *kt, *fnct;
 	double azi_rng;
-	double t_brst, t1, t2;
+	double t_brst, t1 = 0.0, t2 = 0.0;
 
 	// get all the parameters needed for the remod_deramp
 	search_tree(xml_tree, "/product/generalAnnotation/productInformation/radarFrequency/", tmp_c, 1, 0, 1);
@@ -784,10 +783,12 @@ int azi_shift(void *API, fcomplex *cbrst, int lpb, int width, fcomplex *fft_vec,
 
 	/*  this is a routine to apply an azimuth shift to a burst of TOPS data */
 	int ii, jj, k;
-	double sumr, sumi, azi_new;
+	double sumr = 0.0, sumi = 0.0, azi_new;
 
 	// loop over columns of the burst
 	for (jj = 0; jj < width; jj++) {
+		sumr = 0.0;
+		sumi = 0.0;
 		azi_new = azi + jj * stretch_a;
 		// compute the mean value
 		for (ii = 0; ii < lpb; ii++) {

@@ -63,19 +63,25 @@
 #include "siocomplex.h"
 
 /* global variables */
-int verbose;     /* controls minimal level of output 	*/
-int debug;       /* more output 				*/
-int swap;        /* whether to swap bytes 		*/
-int quad_pol;    /* quad polarization data 		*/
-int force_slope; /* whether to force the slope 		*/
-int dopp;        /* whether to calculate doppler 	*/
-int roi_flag;    /* whether to write roi.in 		*/
-int sio_flag;    /* whether to write PRM file 		*/
-int nodata;
-int quiet_flag;
-double forced_slope; /* value to set chirp_slope to		*/
-int SAR_mode;        /* 0 => high-res                        */
-                     /* 1 => wide obs                        */
-                     /* 2 => polarimetry                     */
-                     /* from ALOS Product Format 3-2         */
+#ifdef GMTSAR_DEFINE_GLOBALS
+#define GMTSAR_EXTERN
+#else
+#define GMTSAR_EXTERN extern
+#endif
+GMTSAR_EXTERN int verbose;     /* controls minimal level of output 	*/
+GMTSAR_EXTERN int debug;       /* more output 				*/
+GMTSAR_EXTERN int swap;        /* whether to swap bytes 		*/
+GMTSAR_EXTERN int quad_pol;    /* quad polarization data 		*/
+GMTSAR_EXTERN int force_slope; /* whether to force the slope 		*/
+GMTSAR_EXTERN int dopp;        /* whether to calculate doppler 	*/
+GMTSAR_EXTERN int roi_flag;    /* whether to write roi.in 		*/
+GMTSAR_EXTERN int sio_flag;    /* whether to write PRM file 		*/
+GMTSAR_EXTERN int nodata;
+GMTSAR_EXTERN int quiet_flag;
+GMTSAR_EXTERN double forced_slope; /* value to set chirp_slope to		*/
+GMTSAR_EXTERN int SAR_mode;        /* 0 => high-res                        */
+                                   /* 1 => wide obs                        */
+                                   /* 2 => polarimetry                     */
+                                   /* from ALOS Product Format 3-2         */
+#undef GMTSAR_EXTERN
 #endif               /* GMTSAR_H */
