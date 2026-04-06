@@ -175,7 +175,8 @@ if ($skip_master == 0 || $skip_master == 1) then
     endif
     fitoffset.csh 2 2 freq_xcorr.dat 
     fitoffset.csh 2 2 freq_xcorr.dat 20 >> $aligned.PRM
-    update_PRM $aligned.PRM SC_identity 12        
+    update_PRM $aligned.PRM SC_identity 12 
+    
   else
     xcorr2 $master.PRM $aligned.PRM -noshift -xsearch 128 -ysearch 128 -nx 20 -ny 50
     fitoffset.csh 2 2  freq_xcorr.dat 18 >> $aligned.PRM
