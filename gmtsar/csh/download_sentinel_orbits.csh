@@ -36,6 +36,23 @@ if ($#argv != 2) then
     exit 1
 endif
 
+set s1_orbit_dir = "/Work/s1orbit"
+set s1_orbit_dir_env = `printenv S1_ORBIT_DIR`
+if ("x$s1_orbit_dir_env" != "x") then
+    set s1_orbit_dir = "$s1_orbit_dir_env"
+endif
+if (! -d "$s1_orbit_dir") then
+    echo "提示: S1轨道目录不存在: $s1_orbit_dir"
+    echo "请先创建目录，或设置环境变量 S1_ORBIT_DIR 指向已存在目录。"
+    exit 1
+endif
+if (! -r "$s1_orbit_dir" || ! -w "$s1_orbit_dir") then
+    echo "提示: S1轨道目录不可读写: $s1_orbit_dir"
+    echo "请检查目录权限。"
+    exit 1
+endif
+echo "Using orbit cache directory: $s1_orbit_dir"
+
 
 #-------------------------
 # PRECISE ORBITS (POEORB)
@@ -70,11 +87,17 @@ if ($2 == 1) then
       endif
       set file = `echo $orbit | awk '{print substr($1,1,length($1)-4)}'`
 
-      if (! -e $file) then
+      if (-e $file) then
+        echo "Using local precise orbit $file"
+      else if (-e "$s1_orbit_dir/$file") then
+        ln -sf "$s1_orbit_dir/$file" "$file"
+        echo "Using cached precise orbit $file from $s1_orbit_dir"
+      else
         echo "Downloading precise orbit $file ..."
         wget https://step.esa.int/auxdata/orbits/Sentinel-1/$orbittype/$SAT1/$yr/$mo/$orbit
         unzip $orbit $file
         rm $orbit
+        if (-e $file) cp -f "$file" "$s1_orbit_dir/$file"
       endif
       rm tmp_orbit.html
     end
@@ -118,11 +141,17 @@ if ($2 == 2) then
         set orbit = `echo $rec`
         set file = `echo $orbit | awk '{print substr($1,1,length($1)-4)}'`
         if ($tstart < $start && $tend > $end) then
-          echo "Downloading restituted orbit $file ..."
-          if (! -e $file) then
+          if (-e $file) then
+            echo "Using restituted orbit $file from local directory"
+          else if (-e "$s1_orbit_dir/$file") then
+            ln -sf "$s1_orbit_dir/$file" "$file"
+            echo "Using restituted orbit $file from cache $s1_orbit_dir"
+          else
+            echo "Downloading restituted orbit $file ..."
             wget https://step.esa.int/auxdata/orbits/Sentinel-1/$orbittype/$SAT1/$yr/$mo/$orbit
             unzip $orbit $file
             rm $orbit
+            if (-e $file) cp -f "$file" "$s1_orbit_dir/$file"
           endif
         endif
       end

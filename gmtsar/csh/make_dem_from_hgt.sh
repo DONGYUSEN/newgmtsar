@@ -4,8 +4,9 @@ set -euo pipefail
 if [[ $# -lt 4 || $# -gt 5 ]]; then
   echo ""
   echo "Usage: make_dem_from_hgt.sh W E S N [hgt_dir]"
-  echo "  If hgt_dir is provided, use local HGT/HGT.ZIP files in that directory."
-  echo "  If hgt_dir is omitted, download SRTMGL1 HGT ZIP tiles from ESA and mosaic."
+  echo "  hgt_dir is local/cache directory for HGT/HGT.ZIP files."
+  echo "  Default hgt_dir is /Work/dem."
+  echo "  Missing tiles are downloaded from ESA into hgt_dir and then mosaicked."
   echo ""
   exit 1
 fi
@@ -14,7 +15,7 @@ W="$1"
 E="$2"
 S="$3"
 N="$4"
-HGT_DIR="${5:-}"
+HGT_DIR="${5:-/Work/dem}"
 
 need_cmd() {
   command -v "$1" >/dev/null 2>&1 || { echo "ERROR: missing command: $1" >&2; exit 1; }
@@ -47,11 +48,18 @@ fi
 tmp_dir="$(mktemp -d /tmp/gmtsar_hgt_XXXXXX)"
 trap 'rm -rf "$tmp_dir"' EXIT
 
-cache_dir="${HOME:-/tmp}/.gmtsar_hgt_cache"
-mkdir -p "$cache_dir"
+if [[ ! -d "$HGT_DIR" ]]; then
+  echo "提示: HGT目录不存在: $HGT_DIR" >&2
+  echo "请先创建该目录，或在参数中指定已存在目录。" >&2
+  exit 1
+fi
+if [[ ! -r "$HGT_DIR" || ! -w "$HGT_DIR" ]]; then
+  echo "提示: HGT目录不可读写: $HGT_DIR" >&2
+  echo "请检查目录权限。" >&2
+  exit 1
+fi
 
 declare -a tile_sources=()
-missing_local=0
 
 for ((lat=lat_start; lat<lat_end_excl; lat++)); do
   if ((lat >= 0)); then
@@ -68,41 +76,30 @@ for ((lat=lat_start; lat<lat_end_excl; lat++)); do
     fi
     tile="${lat_tag}${lon_tag}"
 
-    if [[ -n "$HGT_DIR" ]]; then
-      if [[ -f "$HGT_DIR/$tile.hgt" ]]; then
-        tile_sources+=("$HGT_DIR/$tile.hgt")
-        continue
-      fi
-      if [[ -f "$HGT_DIR/$tile.hgt.zip" ]]; then
-        tile_sources+=("/vsizip/$HGT_DIR/$tile.hgt.zip/$tile.hgt")
-        continue
-      fi
-      if [[ -f "$HGT_DIR/$tile.SRTMGL1.hgt.zip" ]]; then
-        tile_sources+=("/vsizip/$HGT_DIR/$tile.SRTMGL1.hgt.zip/$tile.hgt")
-        continue
-      fi
-      echo "ERROR: missing local HGT tile for $tile in $HGT_DIR" >&2
-      missing_local=1
+    if [[ -f "$HGT_DIR/$tile.hgt" ]]; then
+      tile_sources+=("$HGT_DIR/$tile.hgt")
+      continue
+    fi
+    if [[ -f "$HGT_DIR/$tile.hgt.zip" ]]; then
+      tile_sources+=("/vsizip/$HGT_DIR/$tile.hgt.zip/$tile.hgt")
+      continue
+    fi
+    if [[ -f "$HGT_DIR/$tile.SRTMGL1.hgt.zip" ]]; then
+      tile_sources+=("/vsizip/$HGT_DIR/$tile.SRTMGL1.hgt.zip/$tile.hgt")
       continue
     fi
 
-    zip_file="$cache_dir/$tile.SRTMGL1.hgt.zip"
-    if [[ ! -s "$zip_file" ]]; then
-      url="https://step.esa.int/auxdata/dem/SRTMGL1/$tile.SRTMGL1.hgt.zip"
-      echo "Downloading $tile from ESA: $url"
-      if ! wget -q -O "$zip_file" "$url"; then
-        rm -f "$zip_file"
-        echo "ERROR: failed to download $url" >&2
-        exit 1
-      fi
+    zip_file="$HGT_DIR/$tile.SRTMGL1.hgt.zip"
+    url="https://step.esa.int/auxdata/dem/SRTMGL1/$tile.SRTMGL1.hgt.zip"
+    echo "Downloading $tile from ESA: $url"
+    if ! wget -q -O "$zip_file" "$url"; then
+      rm -f "$zip_file"
+      echo "ERROR: failed to download $url" >&2
+      exit 1
     fi
     tile_sources+=("/vsizip/$zip_file/$tile.hgt")
   done
 done
-
-if [[ "$missing_local" -ne 0 ]]; then
-  exit 1
-fi
 
 if [[ "${#tile_sources[@]}" -eq 0 ]]; then
   echo "ERROR: no HGT tiles resolved" >&2

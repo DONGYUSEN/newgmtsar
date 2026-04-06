@@ -11,7 +11,7 @@
     echo "      and removes the EGM96 geoid to make heights relative to WGS84."
     echo ""
     echo "      mode 1:SRTM-1s 2:SRTM-3s 3:earth_relief_15s"
-    echo "      hgt_dir (optional): local directory for HGT/HGT.ZIP tiles (mode=1)"
+    echo "      hgt_dir (optional, default /Work/dem): local/cache directory for HGT/HGT.ZIP tiles (mode=1)"
     echo ""
     echo "Example: make_dem.csh -115 -112 32 35 2"
     echo ""
@@ -28,7 +28,7 @@
     set mode = 1
   endif
 
-  set hgt_dir = ""
+  set hgt_dir = "/Work/dem"
   if ($#argv == 6) then
     set hgt_dir = "$6"
   endif
@@ -45,13 +45,13 @@
 # get srtm data
 #
   if ($mode == 1) then
-    if ("$hgt_dir" != "") then
-      echo "make_dem.csh mode=1: use local HGT directory $hgt_dir"
-      make_dem_from_hgt.sh $1 $2 $3 $4 "$hgt_dir"
-    else
-      echo "make_dem.csh mode=1: no HGT directory specified, download HGT from ESA"
-      make_dem_from_hgt.sh $1 $2 $3 $4
+    if (! -d "$hgt_dir") then
+      echo "提示: HGT目录不存在: $hgt_dir"
+      echo "请先创建该目录，或在第6个参数中指定已存在目录。"
+      exit 1
     endif
+    echo "make_dem.csh mode=1: use HGT cache directory $hgt_dir (missing tiles will be downloaded from ESA)"
+    make_dem_from_hgt.sh $1 $2 $3 $4 "$hgt_dir"
     if ($status != 0 || ! -f dem_ortho.grd) then
       echo "ERROR: failed to build dem_ortho.grd from HGT tiles"
       exit 1

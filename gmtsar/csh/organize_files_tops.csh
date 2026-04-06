@@ -36,7 +36,21 @@
   endif
 
   # set local orbit directory
-  set orb_dir = "Sentinel_Orbits"
+  set orbit_cache_dir = "/Work/s1orbit"
+  set orbit_cache_dir_env = `printenv S1_ORBIT_DIR`
+  if ("x$orbit_cache_dir_env" != "x") then
+    set orbit_cache_dir = "$orbit_cache_dir_env"
+  endif
+  if (! -d "$orbit_cache_dir") then
+    echo "提示: S1轨道目录不存在: $orbit_cache_dir"
+    echo "请先创建目录，或设置环境变量 S1_ORBIT_DIR 指向已存在目录。"
+    exit 1
+  endif
+  if (! -r "$orbit_cache_dir" || ! -w "$orbit_cache_dir") then
+    echo "提示: S1轨道目录不可读写: $orbit_cache_dir"
+    echo "请检查目录权限。"
+    exit 1
+  endif
 
   set ii = 0
   set mode = $3
@@ -127,15 +141,27 @@
 #          echo " "
 #        endif
 
-        cat tmprecord | awk 'NR==1{print $1}' > tmp_safelist
-        download_sentinel_orbits.csh tmp_safelist 1
-        set orbit = `ls *EOF | grep $n1 | grep $n2 | tail -1`
-        if ("x" == $orbit"x") then
-          download_sentinel_orbits.csh tmp_safelist 2 > tmp_download_log
-          set orbit = `grep "restituted" tmp_download_log | awk '{print $4}'`
+        set orbit = `find "$orbit_cache_dir" -maxdepth 1 -type f -name "*EOF" | grep $SAT0 | grep $n1 | grep $n2 | tail -1`
+        if ("x$orbit" != "x") then
+          set orbit_file = `basename "$orbit"`
+          if (! -e "$orbit_file") ln -sf "$orbit" "$orbit_file"
+          set orbit = "$orbit_file"
+          echo "Using orbit from cache: $orbit_cache_dir/$orbit"
+        else
+          cat tmprecord | awk 'NR==1{print $1}' > tmp_safelist
+          setenv S1_ORBIT_DIR "$orbit_cache_dir"
+          download_sentinel_orbits.csh tmp_safelist 1
+          set orbit = `ls *EOF | grep $n1 | grep $n2 | tail -1`
+          if ("x" == "$orbit"x) then
+            download_sentinel_orbits.csh tmp_safelist 2 > tmp_download_log
+            set orbit = `grep "restituted orbit" tmp_download_log | awk '{print $4}' | tail -1`
+          endif
+          if ("x$orbit" != "x") then
+            if (-e "$orbit") cp -f "$orbit" "$orbit_cache_dir/$orbit"
+          endif
+          echo "Downloaded orbit file $orbit"
+          rm -f tmp_safelist tmp_download_log
         endif
-        echo "Downloaded orbit file $orbit"
-        rm tmp_safelist tmp_download_log
 
         # compute azimuth for the start and end 
         set pin1 = `head -1 $2 | awk '{print $1,$2}'` 
@@ -260,15 +286,27 @@
 #    echo " "
 #  endif
 
-  cat tmprecord | awk 'NR==1{print $1}' > tmp_safelist
-  download_sentinel_orbits.csh tmp_safelist 1
-  set orbit = `ls *EOF | grep $n1 | grep $n2 | tail -1`
-  if ("x" == $orbit"x") then
-    download_sentinel_orbits.csh tmp_safelist 2 > tmp_download_log
-    set orbit = `grep "restituted" tmp_download_log | awk '{print $4}'`
+  set orbit = `find "$orbit_cache_dir" -maxdepth 1 -type f -name "*EOF" | grep $SAT0 | grep $n1 | grep $n2 | tail -1`
+  if ("x$orbit" != "x") then
+    set orbit_file = `basename "$orbit"`
+    if (! -e "$orbit_file") ln -sf "$orbit" "$orbit_file"
+    set orbit = "$orbit_file"
+    echo "Using orbit from cache: $orbit_cache_dir/$orbit"
+  else
+    cat tmprecord | awk 'NR==1{print $1}' > tmp_safelist
+    setenv S1_ORBIT_DIR "$orbit_cache_dir"
+    download_sentinel_orbits.csh tmp_safelist 1
+    set orbit = `ls *EOF | grep $n1 | grep $n2 | tail -1`
+    if ("x" == "$orbit"x) then
+      download_sentinel_orbits.csh tmp_safelist 2 > tmp_download_log
+      set orbit = `grep "restituted orbit" tmp_download_log | awk '{print $4}' | tail -1`
+    endif
+    if ("x$orbit" != "x") then
+      if (-e "$orbit") cp -f "$orbit" "$orbit_cache_dir/$orbit"
+    endif
+    echo "Downloaded orbit file $orbit"
+    rm -f tmp_safelist tmp_download_log
   endif
-  echo "Downloaded orbit file $orbit"
-  rm tmp_safelist tmp_download_log
 
   # check the start and the end, make sure the start comes later than the first line of the first file and the end comes before the last line of the last file
   set pin1 = `head -1 $2 | awk '{print $1,$2}'` 

@@ -9,7 +9,21 @@
 #
 # set a local directory that stores S1A and S1B orbits. e.g. orb_dir/S1A and orb_dir/S1B
 #
-set orb_dir = "/geosat2/InSAR_Processing/Sentinel_Orbits"
+set orb_dir = "/Work/s1orbit"
+set orb_dir_env = `printenv S1_ORBIT_DIR`
+if ("x$orb_dir_env" != "x") then
+  set orb_dir = "$orb_dir_env"
+endif
+if (! -d "$orb_dir") then
+  echo "提示: S1轨道目录不存在: $orb_dir"
+  echo "请先创建目录，或设置环境变量 S1_ORBIT_DIR 指向已存在目录。"
+  exit 1
+endif
+if (! -r "$orb_dir" || ! -w "$orb_dir") then
+  echo "提示: S1轨道目录不可读写: $orb_dir"
+  echo "请检查目录权限。"
+  exit 1
+endif
 
 rm data.in
 ls *.xml > text.dat
@@ -41,10 +55,13 @@ foreach line ( ` awk '{ print $0 }' < text.dat ` )
     #cp ../../../../orbit/*$n1*$n2* .
     set orb = `grep $SAT orbits.list | grep $n1 | grep $n2 | tail -1`
     if (! -f $orb) then
-      if (-f $orb_dir/$SAT/$orb) then 
+      if (-f $orb_dir/$orb) then
+        cp $orb_dir/$orb .
+      else if (-f $orb_dir/$SAT/$orb) then 
         cp $orb_dir/$SAT/$orb .
       else
         wgetasf $url_root/$orb
+        if (-f $orb) cp -f $orb $orb_dir/$orb
       endif
     endif
     #if (! -f $orb) wget $url_root"/"$orb
@@ -73,10 +90,13 @@ echo "Writing record $mstem"
 #set orb = `ls *$n1*$n2*`
 set orb = `grep $SAT orbits.list | grep $n1 | grep $n2 | tail -1`
 if (! -f $orb) then
-  if (-f $orb_dir/$SAT/$orb) then
+  if (-f $orb_dir/$orb) then
+    cp $orb_dir/$orb .
+  else if (-f $orb_dir/$SAT/$orb) then
     cp $orb_dir/$SAT/$orb .
   else
     wgetasf $url_root/$orb
+    if (-f $orb) cp -f $orb $orb_dir/$orb
   endif
 endif
 #if (! -f $orb)  wget $url_root"/"$orb
