@@ -25,7 +25,7 @@
   if ($#argv >= 5) then
     set mode = $5
   else
-    set mode = 3
+    set mode = 1
   endif
 
   set hgt_dir = ""

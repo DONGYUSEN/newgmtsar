@@ -115,8 +115,7 @@ echo remarked is $remarked
  proj_ra2ll.csh trans.dat display_amp.grd display_amp_ll.grd $proj_arg   ; gmt grdedit -D//"dimensionless"/1///"PWD:t amplitude"/"$remarked"                  display_amp_ll.grd
 # project the amp data by ysdong@cug
  proj_ra2ll.csh trans.dat final-amp.grd final-amp_ll.grd $proj_arg       ; gmt grdedit -D//"dimensionless"/1///"PWD:t amplitude"/"$remarked"  final-amp_ll.grd
- grd2geotiff.csh final-amp_ll final-amp.cpt
- grd2geotiff.csh phasefilt_mask_ll phase.cpt 
+ if (-e final-amp_ll.grd) grd2geotiff.csh final-amp_ll final-amp.cpt
 if (-e xphase_mask.grd) then
   proj_ra2ll.csh trans.dat xphase_mask.grd xphase_mask_ll.grd $proj_arg ; gmt grdedit -D//"radians"/1///"$PWD:t xphase"/"$remarked"                            xphase_mask_ll.grd
   proj_ra2ll.csh trans.dat yphase_mask.grd yphase_mask_ll.grd $proj_arg ; gmt grdedit -D//"radians"/1///"$PWD:t yphase"/"$remarked"                            yphase_mask_ll.grd
@@ -130,25 +129,25 @@ endif
 if (-e phasefilt_mask.grd) then
   proj_ra2ll.csh trans.dat phasefilt_mask.grd phasefilt_mask_ll.grd $proj_arg ; gmt grdedit -D//"phase in radians"/1///"PWD:t wrapped phase masked filtered"/"$remarked"   phasefilt_mask_ll.grd
 endif
+if (-e phasefilt_mask_ll.grd) then
+  grd2geotiff.csh phasefilt_mask_ll phase.cpt
+endif
 #
 #   now image for google earth
 #
 echo "生成kml文件，geocode.csh"
 echo "make the KML files for Google Earth"
-grd2kml.csh display_amp_ll display_amp.cpt
-grd2kml.csh final-amp_ll final-amp.cpt
-grd2kml.csh corr_ll corr.cpt
-grd2kml.csh phase_mask_ll phase.cpt
-grd2kml.csh phasefilt_mask_ll phase.cpt
+if (-e display_amp_ll.grd) grd2kml.csh display_amp_ll display_amp.cpt
+if (-e final-amp_ll.grd) grd2kml.csh final-amp_ll final-amp.cpt
+if (-e corr_ll.grd) grd2kml.csh corr_ll corr.cpt
+if (-e phase_mask_ll.grd) grd2kml.csh phase_mask_ll phase.cpt
+if (-e phasefilt_mask_ll.grd) grd2kml.csh phasefilt_mask_ll phase.cpt
 if (-e xphase_mask_ll.grd) then
   grd2kml.csh xphase_mask_ll xphase.cpt
   grd2kml.csh yphase_mask_ll yphase.cpt
 endif
 if (-e unwrap_mask_ll.grd) then
   grd2kml.csh unwrap_mask_ll unwrap.cpt
-endif
-if (-e phasefilt_mask_ll.grd) then
-  grd2kml.csh phasefilt_mask_ll phase.cpt
 endif
 if (-e unwrap_mask_ll.grd) then
   # constant is negative to make LOS = -1 * range change
