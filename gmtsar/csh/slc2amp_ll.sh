@@ -11,6 +11,17 @@ unset noclobber
   set sharedir = `gmtsar_sharedir.csh`
   set fil1 = $sharedir/filters/gauss5x3
   set fil2 = $sharedir/filters/gauss9x5 
+  if (! -x "`which conv`") then
+    echo "slc2amp_ll.sh"
+    echo "missing executable: conv"
+    exit 1
+  endif
+  if (! -f "$fil1") then
+    echo "slc2amp_ll.sh"
+    echo "missing filter: $fil1"
+    echo "sharedir resolved to: $sharedir"
+    exit 1
+  endif
 #
 # check for number of arguments
 #
@@ -40,21 +51,21 @@ echo "=== 逐个检查文件存在性 ==="
 if (-e "${name}.SLC") then
     echo "✅ 存在文件：${name}.SLC"
 else
-    ln -s ../raw/${name}.SLC ."
+    ln -s ../raw/${name}.SLC .
 endif
 
 # 检查 .PRM 文件
 if (-e "${name}.PRM") then
     echo "✅ 存在文件：${name}.PRM"
 else
-    ln -s ../raw/${name}.PRM ."
+    ln -s ../raw/${name}.PRM .
 endif
 
 # 检查 .LED 文件
 if (-e "${name}.LED") then
     echo "✅ 存在文件：${name}.LED"
 else
-    ln -s ../raw/${name}.LED ."
+    ln -s ../raw/${name}.LED .
 endif
 
 
@@ -68,7 +79,7 @@ endif
   
 
     echo " range decimation is:" $2
-    conv 2 $2 $fil1 $1.PRM test22.grd =bf
+    conv 2 $2 $fil1 $1.PRM test22.grd=bf
     gmt grdmath test22.grd LOG2 100 ADD = test2.grd
     proj_ra2ll.csh  trans.dat  test2.grd test2_ll.grd 8
     gmt grd2cpt  test2.grd  -Cgray  -Z  > test2.cpt
