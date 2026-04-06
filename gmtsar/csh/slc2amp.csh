@@ -12,6 +12,17 @@ unset noclobber
   set sharedir = `gmtsar_sharedir.csh`
   set fil1 = $sharedir/filters/gauss5x3
   set fil2 = $sharedir/filters/gauss9x5 
+  if (! -x "`which conv`") then
+    echo "slc2amp.csh"
+    echo "missing executable: conv"
+    exit 1
+  endif
+  if (! -f "$fil1") then
+    echo "slc2amp.csh"
+    echo "missing filter: $fil1"
+    echo "sharedir resolved to: $sharedir"
+    exit 1
+  endif
 #
 # check for number of arguments
 #

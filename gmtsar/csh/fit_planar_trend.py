@@ -1,4 +1,4 @@
-#!/home/ysdong/miniconda3/bin/python
+#!/usr/bin/env python3
 import subprocess
 import os.path
 import numpy as np
@@ -21,7 +21,7 @@ if __name__ == '__main__':
 
     # find the trend
     trend_params=get_trend(x,y,z)
-    print('%.15f %.15f %.15f') %(trend_params[0], trend_params[1],trend_params[2])
+    print('%.15f %.15f %.15f' % (trend_params[0], trend_params[1], trend_params[2]))
 
 
     

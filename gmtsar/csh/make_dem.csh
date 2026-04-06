@@ -43,7 +43,11 @@
   else if ($mode == 2) then
     gmt grdcut @earth_relief_03s $R -Gdem_ortho.grd 
   else 
-    gmt grdcut /home/ysdong/Software/GMTSAR/share/gmtsar/earth_relief_15s.grd $R -Gdem_ortho.grd 
+    if (-f "$sharedir/earth_relief_15s.grd") then
+      gmt grdcut $sharedir/earth_relief_15s.grd $R -Gdem_ortho.grd
+    else
+      gmt grdcut @earth_relief_15s $R -Gdem_ortho.grd
+    endif
   endif
 #
 # resample and remove geoid
@@ -62,4 +66,3 @@
   echo ""
   echo "END: make_dem.csh"
   echo ""
-
