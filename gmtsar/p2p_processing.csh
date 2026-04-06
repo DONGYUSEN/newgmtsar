@@ -663,12 +663,27 @@ setenv OMP_NUM_THREADS 10
       endif
       if ($SAT == "LT1") then
         if (! -s freq_xcorr.dat) then
-          set _lt1_xcorr_bak = `ls -1t xcorr_*.dat0 2>/dev/null | head -n 1`
-          if ("x$_lt1_xcorr_bak" != "x" && -s "$_lt1_xcorr_bak") then
-            cp "$_lt1_xcorr_bak" freq_xcorr.dat
-            echo "WARNING: LT1 stage-2 missing freq_xcorr.dat; restored from $_lt1_xcorr_bak"
+          set _lt1_xcorr_src = ""
+          foreach _cand (freq_xcorr.dat SLC/freq_xcorr.dat ../SLC/freq_xcorr.dat)
+            if (-s "$_cand") then
+              set _lt1_xcorr_src = "$_cand"
+              break
+            endif
+          end
+          if ("x$_lt1_xcorr_src" != "x" && "$_lt1_xcorr_src" != "freq_xcorr.dat") then
+            cp "$_lt1_xcorr_src" freq_xcorr.dat
+            echo "WARNING: LT1 stage-2 missing local freq_xcorr.dat; copied from $_lt1_xcorr_src"
+          else if ("x$_lt1_xcorr_src" == "x") then
+            set _lt1_xcorr_bak = `ls -1t xcorr_*.dat0 2>/dev/null | head -n 1`
+            if ("x$_lt1_xcorr_bak" != "x" && -s "$_lt1_xcorr_bak") then
+              cp "$_lt1_xcorr_bak" freq_xcorr.dat
+              echo "WARNING: LT1 stage-2 missing freq_xcorr.dat; restored from $_lt1_xcorr_bak"
+            else
+              echo "WARNING: LT1 stage-2 produced empty/missing freq_xcorr.dat, but stage-2 resampling completed; continue."
+            endif
           else
-            echo "WARNING: LT1 stage-2 produced empty/missing freq_xcorr.dat, but stage-2 resampling completed; continue."
+            # already found local freq_xcorr.dat but previous -s check failed transiently
+            echo "WARNING: LT1 freq_xcorr.dat recheck passed."
           endif
         endif
       endif
