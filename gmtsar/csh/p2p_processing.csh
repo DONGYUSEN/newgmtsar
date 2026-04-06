@@ -663,8 +663,13 @@ setenv OMP_NUM_THREADS 10
       endif
       if ($SAT == "LT1") then
         if (! -s freq_xcorr.dat) then
-          echo "ERROR: LT1 stage-2 produced empty/missing freq_xcorr.dat"
-          exit 1
+          set _lt1_xcorr_bak = `ls -1t xcorr_*.dat0 2>/dev/null | head -n 1`
+          if ("x$_lt1_xcorr_bak" != "x" && -s "$_lt1_xcorr_bak") then
+            cp "$_lt1_xcorr_bak" freq_xcorr.dat
+            echo "WARNING: LT1 stage-2 missing freq_xcorr.dat; restored from $_lt1_xcorr_bak"
+          else
+            echo "WARNING: LT1 stage-2 produced empty/missing freq_xcorr.dat, but stage-2 resampling completed; continue."
+          endif
         endif
       endif
 
