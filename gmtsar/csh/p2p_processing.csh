@@ -138,7 +138,7 @@ setenv OMP_NUM_THREADS 10
 
   set SAT = `echo $1`
   if ("$conf" == "") then
-    csh -f pop_config.csh $SAT > config.$SAT.txt
+    csh -f "$script_dir/pop_config.csh" $SAT > config.$SAT.txt
     set conf = `echo "config.$SAT.txt"`
   endif
   # conf may need to be changed later on
