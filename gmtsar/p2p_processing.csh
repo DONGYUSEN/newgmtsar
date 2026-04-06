@@ -674,7 +674,7 @@ setenv OMP_NUM_THREADS 10
             cp "$_lt1_xcorr_src" freq_xcorr.dat
             echo "WARNING: LT1 stage-2 missing local freq_xcorr.dat; copied from $_lt1_xcorr_src"
           else if ("x$_lt1_xcorr_src" == "x") then
-            set _lt1_xcorr_bak = `ls -1t xcorr_*.dat0 2>/dev/null | head -n 1`
+            set _lt1_xcorr_bak = `find . -maxdepth 1 -type f -name 'xcorr_*.dat0' -printf '%T@ %f\n' | sort -nr | head -n 1 | awk '{print $2}'`
             if ("x$_lt1_xcorr_bak" != "x" && -s "$_lt1_xcorr_bak") then
               cp "$_lt1_xcorr_bak" freq_xcorr.dat
               echo "WARNING: LT1 stage-2 missing freq_xcorr.dat; restored from $_lt1_xcorr_bak"

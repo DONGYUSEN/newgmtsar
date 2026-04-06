@@ -1,4 +1,37 @@
 #!/bin/csh -f
 #	$Id: gmtsar_sharedir.csh.in 42 2013-04-08 20:43:57Z pwessel $
-# Just report the GMTSAR share directory
+# Report the GMTSAR share directory with runtime detection.
+
+if ($?GMTSAR_SHAREDIR) then
+  if (-d "$GMTSAR_SHAREDIR") then
+    echo "$GMTSAR_SHAREDIR"
+    exit 0
+  endif
+endif
+
+if ($?GMTSAR_HOME) then
+  if (-d "$GMTSAR_HOME/share/gmtsar") then
+    echo "$GMTSAR_HOME/share/gmtsar"
+    exit 0
+  endif
+endif
+
+set script_dir = $0:h
+if ("$script_dir" == "$0") set script_dir = "."
+
+if (-d "$script_dir/../share/gmtsar") then
+  echo "$script_dir/../share/gmtsar"
+  exit 0
+endif
+
+if (-d "$script_dir/../../share/gmtsar") then
+  echo "$script_dir/../../share/gmtsar"
+  exit 0
+endif
+
+if (-d "@prefix@/share/gmtsar") then
+  echo "@prefix@/share/gmtsar"
+  exit 0
+endif
+
 echo "@prefix@/share/gmtsar"
