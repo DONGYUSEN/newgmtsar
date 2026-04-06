@@ -43,8 +43,20 @@
   else if ($mode == 2) then
     gmt grdcut @earth_relief_03s $R -Gdem_ortho.grd 
   else 
+    set local_relief = ""
     if (-f "$sharedir/earth_relief_15s.grd") then
-      gmt grdcut $sharedir/earth_relief_15s.grd $R -Gdem_ortho.grd
+      set local_relief = "$sharedir/earth_relief_15s.grd"
+    else if (-f "$sharedir/earth_relief_15s_host_test.grd") then
+      set local_relief = "$sharedir/earth_relief_15s_host_test.grd"
+    endif
+
+    if ("$local_relief" != "") then
+      set local_ok = `gmt grdinfo -C "$local_relief" | awk -v W=$1 -v E=$2 -v S=$3 -v N=$4 '{if (W >= $2 && E <= $3 && S >= $4 && N <= $5) print 1; else print 0}'`
+      if ("$local_ok" == "1") then
+        gmt grdcut "$local_relief" $R -Gdem_ortho.grd
+      else
+        gmt grdcut @earth_relief_15s $R -Gdem_ortho.grd
+      endif
     else
       gmt grdcut @earth_relief_15s $R -Gdem_ortho.grd
     endif
