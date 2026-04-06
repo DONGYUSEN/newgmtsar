@@ -7,9 +7,11 @@ install (PROGRAMS align.csh align_ALOS2_SCAN.csh align_ALOS_SLC.csh align_batch.
 	grd2geotiff.csh grd2kml.csh intf.csh
 	intf_batch.csh intf_batch_ALOS2_SCAN.csh intf_tops.csh landmask.csh landmask_ALOS2.csh m2s.csh
 	make_a_offset.csh make_dem.csh make_los_ascii.csh make_profile.csh merge_batch.csh
+	make_dem_from_hgt.sh
     merge_unwrap_geocode_tops.csh p2p_ALOS2_SCAN_Frame.csh p2p_ALOS2_SCAN_SLC.csh
 	p2p_ENVI.csh p2p_ERS.csh p2p_S1_TOPS.csh p2p_S1_TOPS_Frame.csh
 	p2p_hook_stage2.csh p2p_hook_stage3.csh p2p_hook_stage4.csh
+	p2p_hook_stage3_LT1.csh
 	p2p_mode_strip.csh p2p_mode_tops.csh p2p_sat_entry.csh
 	p2p_processing.csh p2p_stage2_focus.csh p2p_stage2_align.csh p2p_stage2_tops.csh
 	p2p_validate_stage3.csh p2p_validate_stage4.csh pop_config.csh

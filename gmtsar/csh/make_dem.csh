@@ -4,13 +4,14 @@
 #
 # Script to create DEM for GMTSAR, relative to WGS84 ellipsoid
 #
-  if ($#argv != 4 && $#argv != 5) then
+  if ($#argv != 4 && $#argv != 5 && $#argv != 6) then
     echo ""
-    echo "Usage: make_dem.csh W E S N [mode]"
+    echo "Usage: make_dem.csh W E S N [mode] [hgt_dir]"
     echo "      Uses GMT server to download SRTM 1-arcsec data (@earth_relief_xxs)"
     echo "      and removes the EGM96 geoid to make heights relative to WGS84."
     echo ""
-    echo "      mode 1:SRTM-1s 2:SRTM-3s"
+    echo "      mode 1:SRTM-1s 2:SRTM-3s 3:earth_relief_15s"
+    echo "      hgt_dir (optional): local directory for HGT/HGT.ZIP tiles (mode=1)"
     echo ""
     echo "Example: make_dem.csh -115 -112 32 35 2"
     echo ""
@@ -21,10 +22,15 @@
   echo "START: make_dem.csh"
   echo ""
 
-  if ($#argv == 5) then
+  if ($#argv >= 5) then
     set mode = $5
   else
     set mode = 3
+  endif
+
+  set hgt_dir = ""
+  if ($#argv == 6) then
+    set hgt_dir = "$6"
   endif
 
 #
@@ -39,7 +45,17 @@
 # get srtm data
 #
   if ($mode == 1) then
-    gmt grdcut @earth_relief_01s $R -Gdem_ortho.grd
+    if ("$hgt_dir" != "") then
+      echo "make_dem.csh mode=1: use local HGT directory $hgt_dir"
+      make_dem_from_hgt.sh $1 $2 $3 $4 "$hgt_dir"
+    else
+      echo "make_dem.csh mode=1: no HGT directory specified, download HGT from ESA"
+      make_dem_from_hgt.sh $1 $2 $3 $4
+    endif
+    if ($status != 0 || ! -f dem_ortho.grd) then
+      echo "ERROR: failed to build dem_ortho.grd from HGT tiles"
+      exit 1
+    endif
   else if ($mode == 2) then
     gmt grdcut @earth_relief_03s $R -Gdem_ortho.grd 
   else 
@@ -48,6 +64,7 @@
       set local_relief = "$sharedir/earth_relief_15s.grd"
     else if (-f "$sharedir/earth_relief_15s_host_test.grd") then
       set local_relief = "$sharedir/earth_relief_15s_host_test.grd"
+    else
     endif
 
     if ("$local_relief" != "") then
