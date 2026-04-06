@@ -99,7 +99,13 @@ echo "将结果投影到经纬度坐标下，geocode.csh"
 echo "project correlation, phase, unwrapped and amplitude back to lon lat coordinates"
 set maker = $0:t
 set today = `date`
-set remarked = `echo by $USER on $today with $maker`
+if ( $?USER ) then
+  set run_user = "$USER"
+else
+  set run_user = `id -un`
+  if ( "x$run_user" == "x" ) set run_user = "unknown"
+endif
+set remarked = "by $run_user on $today with $maker"
 echo remarked is $remarked
 
  proj_ra2ll.csh trans.dat corr.grd        corr_ll.grd  $proj_arg         ; gmt grdedit -D//"dimensionless"/1///"$PWD:t geocoded correlation"/"$remarked"      corr_ll.grd

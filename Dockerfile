@@ -17,6 +17,7 @@ RUN sed -i 's|http://deb.debian.org/debian|http://mirrors.tuna.tsinghua.edu.cn/d
     csh \
     gfortran \
     gawk \
+    gdal-bin \
     gmt \
     ghostscript \
     libblas-dev \
