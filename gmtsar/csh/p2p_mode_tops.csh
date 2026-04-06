@@ -1,9 +1,10 @@
 #!/bin/csh -f
 # 通用 TOPS 模式入口 / Common tops-mode entry.
 
-if ($#argv != 3 && $#argv != 4) then
+if ($#argv < 3 || $#argv > 5) then
   echo ""
-  echo "用法 / Usage: p2p_mode_tops.csh SAT master aligned [config]"
+  echo "用法 / Usage: p2p_mode_tops.csh SAT master aligned [config] [rg:za]"
+  echo "            : p2p_mode_tops.csh SAT master aligned [rg:za]"
   echo "说明 / Note: 当前仅支持 SAT=S1_TOPS"
   echo ""
   exit 1
@@ -23,7 +24,9 @@ if ($SAT != "S1_TOPS") then
   exit 1
 endif
 
-if ($#argv == 4) then
+if ($#argv == 5) then
+  csh -f $script_dir/p2p_processing.csh $1 $2 $3 $4 $5
+else if ($#argv == 4) then
   csh -f $script_dir/p2p_processing.csh $1 $2 $3 $4
 else
   csh -f $script_dir/p2p_processing.csh $1 $2 $3

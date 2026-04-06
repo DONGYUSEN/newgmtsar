@@ -1,1 +1,0 @@
-gfortran -ffixed-form -ffixed-line-length-none for_ellipsoid_test.F -o for_ellipsoid_test

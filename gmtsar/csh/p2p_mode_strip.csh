@@ -3,9 +3,10 @@
 
 set supported_strip_sat = (ERS ENVI ALOS ALOS_SLC ALOS2 ALOS2_SCAN S1_STRIP ENVI_SLC CSK_RAW CSK_SLC CSG TSX RS2 GF3 LT1 DJ1)
 
-if ($#argv != 3 && $#argv != 4) then
+if ($#argv < 3 || $#argv > 5) then
   echo ""
-  echo "用法 / Usage: p2p_mode_strip.csh SAT master aligned [config]"
+  echo "用法 / Usage: p2p_mode_strip.csh SAT master aligned [config] [rg:za]"
+  echo "            : p2p_mode_strip.csh SAT master aligned [rg:za]"
   echo "说明 / Note: 该入口用于 strip 类卫星 (非 S1_TOPS)"
   echo "支持的 strip 卫星 / Supported strip SAT: $supported_strip_sat"
   echo ""
@@ -43,7 +44,9 @@ if (! -f "$script_dir/p2p_processing.csh") then
   exit 1
 endif
 
-if ($#argv == 4) then
+if ($#argv == 5) then
+  csh -f $script_dir/p2p_processing.csh $1 $2 $3 $4 $5
+else if ($#argv == 4) then
   csh -f $script_dir/p2p_processing.csh $1 $2 $3 $4
 else
   csh -f $script_dir/p2p_processing.csh $1 $2 $3

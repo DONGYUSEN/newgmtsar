@@ -6,32 +6,87 @@
 #  Automatically perform two-path processing on raw(1.0)/SLC(1.1) data
 #  
 
-  if ($#argv != 3 && $#argv != 4) then
+  if ($#argv < 3 || $#argv > 5) then
     echo ""
-    echo "用法: p2p_processing.csh SAT master_image aligned_image [configuration_file] "
+    echo "用法:"
+    echo "  1) 自动多视（推荐）"
+    echo "     p2p_processing.csh SAT master_image aligned_image [configuration_file]"
+    echo "  2) 手动多视（命令行指定 rg:za）"
+    echo "     p2p_processing.csh SAT master_image aligned_image [configuration_file] rg:za"
+    echo "  3) 手动多视（配置文件指定）"
+    echo "     在 configuration_file 中设置:"
+    echo "       multilook_mode = manual"
+    echo "       multilook_rg_az = rg:za    (或 range_dec / azimuth_dec)"
     echo ""
-    echo "例子: p2p_processing.csh DJ1 20241110 20241121 [config.DJ1.txt]"
+    echo "示例:"
+    echo "  自动: p2p_processing.csh DJ1 20241110 20241121 config.DJ1.txt"
+    echo "  手动: p2p_processing.csh DJ1 20241110 20241121 config.DJ1.txt 2:2"
+    echo "  手动: p2p_processing.csh S1_TOPS master aligned 8:2"
     echo ""
     echo "    Put the data and orbit files in the raw folder, put DEM in the topo folder"
     echo "    The SAT needs to be specified, choices with in ERS, ENVI, ALOS, ALOS_SLC, ALOS2, ALOS2_SCAN"
     echo "    S1_STRIP, S1_TOPS, ENVI_SLC, CSK_RAW, CSK_SLC, CSG, TSX, RS2, GF3, LT1, DJ1"
+    echo ""
+    echo "    常用卫星手动多视参考值 range_dec:azimuth_dec（写入 config 的 range_dec/azimuth_dec）:"
+    echo "      S1_TOPS -> 8:2"
+    echo "      ALOS2_SCAN -> 4:8"
+    echo "      RS2/TSX -> 1:1 或 2:2"
+    echo "      ERS/ENVI/ALOS/ALOS_SLC/ALOS2/S1_STRIP/ENVI_SLC/CSK_RAW/CSK_SLC/CSG/GF3/LT1/DJ1 -> 2:2"
+    echo "    注：以上为常用起始值，最终应以相干性、解缠稳定性与目标分辨率需求微调。"
     echo ""
     echo "    Make sure the files from the same date have the same stem, e.g. aaaa.tif aaaa.xml aaaa.cos aaaa.EOF, etc"
     echo ""
     echo "    If the configuration file is left blank, the program will generate one "
     echo "    with default parameters "
     echo ""
+    echo "    参数优先级: 命令行 rg:za > multilook_rg_az > range_dec/azimuth_dec"
+    echo "    rg:za 为手动多视（range_dec:azimuth_dec），例如 8:2、2:2、1:1"
+    echo "    只要进入手动模式（命令行或配置文件），系统会自动严格按手动 rg:za 执行"
+    echo "    force_rgaz 为兼容旧配置保留项，通常不需要设置"
+    echo ""
     exit 1
   endif
-    
-# start 
-#  Make sure the config exist
-  if ($#argv == 4) then 
-    if(! -f $4 ) then
-      echo " no configure file: "$4
-      echo " Leave it blank to generate config file with default values."
-      exit 1
+
+# start
+# parse optional config / rg:za argument(s)
+  set conf = ""
+  set cli_rgza = ""
+  if ($#argv >= 4) then
+    set arg4_is_rgza = `echo "$4" | awk -F: '{if(NF==2 && $1~/^[0-9]+$/ && $2~/^[0-9]+$/) print 1; else print 0}'`
+    if ($#argv == 4) then
+      if ($arg4_is_rgza == 1) then
+        set cli_rgza = "$4"
+      else
+        if(! -f "$4" ) then
+          echo " no configure file: $4"
+          echo " Leave it blank to generate config file with default values."
+          exit 1
+        endif
+        set conf = "$4"
+      endif
+    else if ($#argv == 5) then
+      if(! -f "$4" ) then
+        echo " no configure file: $4"
+        echo " Leave it blank to generate config file with default values."
+        exit 1
+      endif
+      set conf = "$4"
+      set arg5_is_rgza = `echo "$5" | awk -F: '{if(NF==2 && $1~/^[0-9]+$/ && $2~/^[0-9]+$/) print 1; else print 0}'`
+      if ($arg5_is_rgza != 1) then
+        echo "错误参数：rg:za=$5（应为整数:整数，如 8:2） / Invalid rg:za: $5"
+        exit 1
+      endif
+      set cli_rgza = "$5"
     endif
+  endif
+
+  # Ensure bundled csh helpers are discoverable when running by path.
+  set script_dir = $0:h
+  if ("$script_dir" == "$0") set script_dir = "."
+  if ($?PATH) then
+    setenv PATH "$script_dir":"$PATH"
+  else
+    setenv PATH "$script_dir"
   endif
 
 # Avoid Conda/system mixed runtime libraries causing GMT/GDAL crashes.
@@ -82,10 +137,8 @@ setenv GMT_MEMORY_LIMIT 8192
 setenv OMP_NUM_THREADS 10
 
   set SAT = `echo $1`
-  if ($#argv == 4) then
-    set conf = `echo $4`
-  else
-    pop_config.csh $SAT > config.$SAT.txt
+  if ("$conf" == "") then
+    csh -f pop_config.csh $SAT > config.$SAT.txt
     set conf = `echo "config.$SAT.txt"`
   endif
   # conf may need to be changed later on
@@ -150,6 +203,9 @@ setenv OMP_NUM_THREADS 10
   #  echo "        remove filter1 = gauss_alos_200m"
   #endif
   set dec = `grep dec_factor $conf | awk '{print $3}'` 
+  if ("x$dec" == "x") then
+    set dec = 1
+  endif
   set threshold_snaphu = `grep threshold_snaphu $conf | awk '{print $3}'`
   set threshold_geocode = `grep threshold_geocode $conf | awk '{print $3}'`
   set region_cut = `grep region_cut $conf | awk '{print $3}'`
@@ -158,6 +214,100 @@ setenv OMP_NUM_THREADS 10
   set defomax = `grep defomax $conf | awk '{print $3}'`
   set range_dec = `grep range_dec $conf | awk '{print $3}'`
   set azimuth_dec = `grep azimuth_dec $conf | awk '{print $3}'`
+  set multilook_mode = `awk '$1=="multilook_mode" && $2=="=" {print $3; exit}' $conf`
+  set multilook_rg_az = `awk '$1=="multilook_rg_az" && $2=="=" {print $3; exit}' $conf`
+  set force_rgaz = `awk '$1=="force_rgaz" && $2=="=" {print $3; exit}' $conf`
+  if ("x$multilook_mode" == "x") then
+    set multilook_mode = "auto"
+  endif
+  if ("x$force_rgaz" == "x") then
+    set force_rgaz = 0
+  endif
+  set multilook_mode = `echo "$multilook_mode" | tr 'A-Z' 'a-z'`
+  set force_ok = `echo "$force_rgaz" | awk '{if($1==0 || $1==1) print 1; else print 0}'`
+  if ($force_ok != 1) then
+    echo "错误参数：force_rgaz=$force_rgaz（仅允许 0 或 1） / Invalid force_rgaz=$force_rgaz"
+    exit 1
+  endif
+
+  set range_dec_eff = ""
+  set azimuth_dec_eff = ""
+  set multilook_source = "auto"
+  set multilook_mode_eff = "$multilook_mode"
+
+  if ("$multilook_mode" != "auto") then
+    if ("$multilook_mode" != "manual") then
+    echo "警告：未知 multilook_mode=$multilook_mode，回退为 auto / WARNING: unknown multilook_mode=$multilook_mode, fallback to auto"
+    set multilook_mode = "auto"
+    set multilook_mode_eff = "auto"
+    endif
+  endif
+
+  if ("$cli_rgza" != "") then
+    set range_dec_eff = `echo "$cli_rgza" | awk -F: '{print $1}'`
+    set azimuth_dec_eff = `echo "$cli_rgza" | awk -F: '{print $2}'`
+    set multilook_mode_eff = "manual"
+    set multilook_source = "cli"
+  else if ("$multilook_mode" == "manual") then
+    if ("$multilook_rg_az" != "") then
+      set rgza_ok = `echo "$multilook_rg_az" | awk -F: '{if(NF==2 && $1~/^[0-9]+$/ && $2~/^[0-9]+$/) print 1; else print 0}'`
+      if ($rgza_ok != 1) then
+        echo "错误参数：multilook_rg_az=$multilook_rg_az（应为整数:整数） / Invalid multilook_rg_az=$multilook_rg_az"
+        exit 1
+      endif
+      set range_dec_eff = `echo "$multilook_rg_az" | awk -F: '{print $1}'`
+      set azimuth_dec_eff = `echo "$multilook_rg_az" | awk -F: '{print $2}'`
+      set multilook_source = "config(multilook_rg_az)"
+    else if ("$range_dec" != "") then
+      if ("$azimuth_dec" != "") then
+        set range_dec_eff = "$range_dec"
+        set azimuth_dec_eff = "$azimuth_dec"
+        set multilook_source = "config(range_dec,azimuth_dec)"
+      else
+        echo "错误：multilook_mode=manual 时 range_dec 存在但 azimuth_dec 缺失"
+        exit 1
+      endif
+    else
+      echo "错误：multilook_mode=manual 但未提供 multilook_rg_az 或 range_dec/azimuth_dec"
+      exit 1
+    endif
+  else
+    # legacy compatibility: if both old keys exist and mode not explicitly set, treat as manual
+    if ("$range_dec" != "") then
+      if ("$azimuth_dec" != "") then
+        if ("$multilook_rg_az" == "") then
+          if ("$multilook_mode" == "auto") then
+            set range_dec_eff = "$range_dec"
+            set azimuth_dec_eff = "$azimuth_dec"
+            set multilook_mode_eff = "manual"
+            set multilook_source = "legacy_config(range_dec,azimuth_dec)"
+          endif
+        endif
+      endif
+    endif
+  endif
+
+  if ("$range_dec_eff" != "") then
+    if ("$azimuth_dec_eff" == "") then
+      echo "错误：range_dec 与 azimuth_dec 需要同时存在 / range_dec and azimuth_dec must be provided together"
+      exit 1
+    endif
+  else
+    if ("$azimuth_dec_eff" != "") then
+      echo "错误：range_dec 与 azimuth_dec 需要同时存在 / range_dec and azimuth_dec must be provided together"
+      exit 1
+    endif
+  endif
+
+  if ("$range_dec_eff" != "") then
+    if ("$azimuth_dec_eff" != "") then
+      set rgok = `echo "$range_dec_eff $azimuth_dec_eff" | awk '{if($1>=1 && $2>=1) print 1; else print 0}'`
+      if ($rgok != 1) then
+        echo "错误：无效多视参数 range_dec=$range_dec_eff azimuth_dec=$azimuth_dec_eff（需 >=1）"
+        exit 1
+      endif
+    endif
+  endif
   set SLC_factor = `grep SLC_factor $conf | awk '{print $3}'`
   set near_interp = `grep near_interp $conf | awk '{print $3}'`
   set data_level = `awk '$1=="data_level" && $2=="=" {print $3; exit}' $conf`
@@ -503,12 +653,19 @@ setenv OMP_NUM_THREADS 10
       endif
 
       p2p_stage2_align.csh $SAT $master $aligned $skip_master $iono
-      if ($status == 20) then
+      set stage2_align_status = $status
+      if ($stage2_align_status == 20) then
         # keep original behavior: LT1 branch exits early from stage2
         exit 0
-      else if ($status != 0) then
+      else if ($stage2_align_status != 0) then
         echo "ERROR: p2p_stage2_align.csh failed"
         exit 1
+      endif
+      if ($SAT == "LT1") then
+        if (! -s freq_xcorr.dat) then
+          echo "ERROR: LT1 stage-2 produced empty/missing freq_xcorr.dat"
+          exit 1
+        endif
       endif
 
     else if ($SAT == "S1_TOPS") then
@@ -762,23 +919,79 @@ setenv OMP_NUM_THREADS 10
     cp ../../SLC/$ref.PRM . 
     cp ../../SLC/$rep.PRM .
 
+    # Resolve effective multilook and geocoding square pixel size.
+    set ref_rng_samp_rate = `grep rng_samp_rate $ref.PRM | awk 'NR==1{print $3}'`
+    set ref_prf = `grep PRF $ref.PRM | awk 'NR==1{print $3}'`
+    set ref_sc_vel = `grep SC_vel $ref.PRM | awk 'NR==1{print $3}'`
+    set ref_sc_height = `grep SC_height $ref.PRM | awk 'NR==1{print $3}'`
+    set ref_earth_radius = `grep earth_radius $ref.PRM | awk 'NR==1{print $3}'`
+
+    set dr_ground_m = `echo "$ref_rng_samp_rate" | awk '{if($1>0){printf("%.6f",1.556*299792458.0/(2.0*$1));}else{print "";}}'`
+    if ("x$dr_ground_m" == "x") set dr_ground_m = 10
+
+    set da_ground_m = `echo "$ref_sc_vel $ref_sc_height $ref_earth_radius $ref_prf" | awk '{gv=$1; if($2>0 && $3>0 && $1>0){gv=$1/sqrt(1.0+$2/$3)}; if($4>0 && gv>0){printf("%.6f",gv/$4);} else {print "";}}'`
+    if ("x$da_ground_m" == "x") set da_ground_m = 10
+
+    if ("$range_dec_eff" == "" || "$azimuth_dec_eff" == "") then
+      set range_dec_eff = `echo "$dr_ground_m $da_ground_m $dec" | awk '{dr=$1; da=$2; dc=int($3+0); if(dc<1) dc=1; t=(dr>da)?dr:da; rg=int(t/dr+0.5); if(rg<1) rg=1; if(rg>64) rg=64; print rg*dc;}'`
+      set azimuth_dec_eff = `echo "$dr_ground_m $da_ground_m $dec" | awk '{dr=$1; da=$2; dc=int($3+0); if(dc<1) dc=1; t=(dr>da)?dr:da; az=int(t/da+0.5); if(az<1) az=1; if(az>64) az=64; print az*dc;}'`
+      set multilook_mode_eff = "auto"
+      set multilook_source = "auto(prm_approx)"
+    endif
+
+    # Guard auto/manual values so filter.csh never derives idec/jdec=0.
+    # Manual rg:za is always strict (no auto adjustment). Auto mode keeps guard.
+    set force_rgaz_eff = 0
+    if ("$multilook_mode_eff" == "manual") then
+      set force_rgaz_eff = 1
+    endif
+
+    if ($force_rgaz_eff == 1) then
+      echo "Multilook manual mode: keep rg:az exactly as requested"
+    else if ($force_rgaz == 1 && "$multilook_mode_eff" != "manual") then
+      echo "Multilook force mode ignored in auto mode (force_rgaz=1, mode=$multilook_mode_eff)"
+    endif
+
+    if ($force_rgaz_eff != 1) then
+      set ml_adjust = `echo "$range_dec_eff $azimuth_dec_eff $ref_rng_samp_rate $ref_prf" | awk '{rg=int($1+0); az=int($2+0); rs=$3+0; prf=$4+0; if(rg<1) rg=1; if(az<1) az=1; az_lks=(prf<1000)?1:4; if(rs>110000000) dec_rng=4; else if(rs>20000000) dec_rng=2; else dec_rng=1; if((az%2)!=0) az_lks=1; if((rg%2)!=0) dec_rng=1; if(az<az_lks) az=az_lks; if(rg<dec_rng) rg=dec_rng; if(az_lks>1 && (az%az_lks)!=0) az=int((az+az_lks-1)/az_lks)*az_lks; if(dec_rng>1 && (rg%dec_rng)!=0) rg=int((rg+dec_rng-1)/dec_rng)*dec_rng; print rg, az;}'`
+      set range_dec_eff = `echo "$ml_adjust" | awk '{print $1}'`
+      set azimuth_dec_eff = `echo "$ml_adjust" | awk '{print $2}'`
+    else
+      # strict manual mode keeps user-requested rg:az unchanged
+    endif
+
+    set geo_pix_m = `echo "$dr_ground_m $da_ground_m $range_dec_eff $azimuth_dec_eff" | awk '{dr=$1*$3; da=$2*$4; g=(dr>da)?dr:da; if(g<=0) g=60; printf("%.3f",g)}'`
+    if ("x$geo_pix_m" == "x") set geo_pix_m = 60
+
+    echo "Multilook resolved: mode=$multilook_mode_eff source=$multilook_source range_dec=$range_dec_eff azimuth_dec=$azimuth_dec_eff"
+    echo "Ground spacing estimate: dr=${dr_ground_m}m da=${da_ground_m}m => geocode square pixel=${geo_pix_m}m"
+    echo "multilook_mode = $multilook_mode_eff" > multilook.meta
+    echo "multilook_source = $multilook_source" >> multilook.meta
+    echo "range_dec_eff = $range_dec_eff" >> multilook.meta
+    echo "azimuth_dec_eff = $azimuth_dec_eff" >> multilook.meta
+    echo "force_rgaz = $force_rgaz" >> multilook.meta
+    echo "force_rgaz_eff = $force_rgaz_eff" >> multilook.meta
+    echo "dr_ground_m = $dr_ground_m" >> multilook.meta
+    echo "da_ground_m = $da_ground_m" >> multilook.meta
+    echo "geo_pix_m = $geo_pix_m" >> multilook.meta
+
     if ("$topo_phase" == "1") then
       echo "生成干涉图并去除地形相位 / Generate interferogram with topographic phase removal"
       if ("$shift_topo" == "1") then
         rm -f topo_shift.grd
         ln -s ../../topo/topo_shift.grd .
         intf.csh $ref.PRM $rep.PRM -topo topo_shift.grd  
-        filter.csh $ref.PRM $rep.PRM $filter $dec $range_dec $azimuth_dec $compute_phase_gradient
+        filter.csh $ref.PRM $rep.PRM $filter $dec $range_dec_eff $azimuth_dec_eff $compute_phase_gradient $force_rgaz_eff
       else 
         rm -f topo_ra.grd
         ln -s ../../topo/topo_ra.grd . 
         intf.csh $ref.PRM $rep.PRM -topo topo_ra.grd 
-        filter.csh $ref.PRM $rep.PRM $filter $dec $range_dec $azimuth_dec $compute_phase_gradient
+        filter.csh $ref.PRM $rep.PRM $filter $dec $range_dec_eff $azimuth_dec_eff $compute_phase_gradient $force_rgaz_eff
       endif
     else
       echo "仅生成干涉图（不去除地形相位） / Generate interferogram without topographic phase removal"
       intf.csh $ref.PRM $rep.PRM
-      filter.csh $ref.PRM $rep.PRM $filter $dec $range_dec $azimuth_dec $compute_phase_gradient
+      filter.csh $ref.PRM $rep.PRM $filter $dec $range_dec_eff $azimuth_dec_eff $compute_phase_gradient $force_rgaz_eff
     endif
     cd ../..
 
@@ -789,8 +1002,8 @@ setenv OMP_NUM_THREADS 10
       cd iono_phase 
       mkdir -p intf_o intf_h intf_l iono_correction
 
-      set new_incx = `echo $range_dec $iono_dsamp | awk '{print $1*$2}'`
-      set new_incy = `echo $azimuth_dec $iono_dsamp | awk '{print $1*$2}'`
+      set new_incx = `echo $range_dec_eff $iono_dsamp | awk '{print $1*$2}'`
+      set new_incy = `echo $azimuth_dec_eff $iono_dsamp | awk '{print $1*$2}'`
 
       echo ""
       cd intf_h
@@ -803,17 +1016,17 @@ setenv OMP_NUM_THREADS 10
           rm -f topo_shift.grd
           ln -s ../../topo/topo_shift.grd .
           intf.csh $ref.PRM $rep.PRM -topo topo_shift.grd  
-          filter.csh $ref.PRM $rep.PRM 500 $dec $new_incx $new_incy
+          filter.csh $ref.PRM $rep.PRM 500 $dec $new_incx $new_incy 0 $force_rgaz_eff
         else 
           rm -f topo_ra.grd
           ln -s ../../topo/topo_ra.grd . 
           intf.csh $ref.PRM $rep.PRM -topo topo_ra.grd 
-          filter.csh $ref.PRM $rep.PRM 500 $dec $new_incx $new_incy
+          filter.csh $ref.PRM $rep.PRM 500 $dec $new_incx $new_incy 0 $force_rgaz_eff
         endif
       else
         echo "不进行地形相位去除 / NO TOPOGRAPHIC PHASE REMOVAL PERFORMED"
         intf.csh $ref.PRM $rep.PRM
-        filter.csh $ref.PRM $rep.PRM 500 $dec $new_incx $new_incy
+        filter.csh $ref.PRM $rep.PRM 500 $dec $new_incx $new_incy 0 $force_rgaz_eff
       endif
       cp phase.grd phasefilt.grd
       if ($iono_skip_est == 0) then
@@ -839,17 +1052,17 @@ setenv OMP_NUM_THREADS 10
           rm -f topo_shift.grd
           ln -s ../../topo/topo_shift.grd .
           intf.csh $ref.PRM $rep.PRM -topo topo_shift.grd
-          filter.csh $ref.PRM $rep.PRM 500 $dec $new_incx $new_incy
-        else
+          filter.csh $ref.PRM $rep.PRM 500 $dec $new_incx $new_incy 0 $force_rgaz_eff
+        else 
           rm -f topo_ra.grd
-          ln -s ../../topo/topo_ra.grd .
-          intf.csh $ref.PRM $rep.PRM -topo topo_ra.grd
-          filter.csh $ref.PRM $rep.PRM 500 $dec $new_incx $new_incy
+          ln -s ../../topo/topo_ra.grd . 
+          intf.csh $ref.PRM $rep.PRM -topo topo_ra.grd 
+          filter.csh $ref.PRM $rep.PRM 500 $dec $new_incx $new_incy 0 $force_rgaz_eff
         endif
       else
         echo "不进行地形相位去除 / NO TOPOGRAPHIC PHASE REMOVAL PERFORMED"
         intf.csh $ref.PRM $rep.PRM
-        filter.csh $ref.PRM $rep.PRM 500 $dec $new_incx $new_incy
+        filter.csh $ref.PRM $rep.PRM 500 $dec $new_incx $new_incy 0 $force_rgaz_eff
       endif
       cp phase.grd phasefilt.grd
       if ($iono_skip_est == 0) then

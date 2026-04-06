@@ -1,2 +1,0 @@
-nvcc -Xcompiler -fPIC -o gpu-topo.o -c Topo.cu
-cp -f gpu-topo.o ..

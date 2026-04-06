@@ -8,7 +8,7 @@
 # Syntax: p2p_processing SAT Image1 Image2
 """
 
-import sys, os, re
+import sys, os, re, math
 import subprocess, glob
 from gmtsar_lib import *
 
@@ -548,8 +548,8 @@ def switchMasterAligned(switch_master, master, aligned):
         sys.exit('P2P 4: wrong parameter: switch_master ' + switch_master)
     return ref, rep
 
-def P2P4MakeFilterInterferograms(ref, rep, topo_phase, shift_topo, range_dec, azimuth_dec, 
-                                dec, filter, compute_phase_gradient, iono, iono_dsamp):
+def P2P4MakeFilterInterferograms(ref, rep, topo_phase, shift_topo, range_dec, azimuth_dec,
+                                dec, filter, compute_phase_gradient, iono, iono_dsamp, force_rgaz):
 
     print('P2P 4: start from make and filter interferograms')
     run('mkdir -p intf')
@@ -568,20 +568,97 @@ def P2P4MakeFilterInterferograms(ref, rep, topo_phase, shift_topo, range_dec, az
     run('ln -sf ../../SLC/'+rep + '.SLC .')
     run('cp ../../SLC/' + ref + '.PRM .')
     run('cp ../../SLC/' + rep + '.PRM .')
+
+    # Resolve effective multilook (default: auto) and geocode square pixel.
+    def _safe_float(v, default=0.0):
+        try:
+            return float(v)
+        except Exception:
+            return default
+
+    rng_samp_rate = _safe_float(grep_value(ref + '.PRM', 'rng_samp_rate', 3), 0.0)
+    prf = _safe_float(grep_value(ref + '.PRM', 'PRF', 3), 0.0)
+    sc_vel = _safe_float(grep_value(ref + '.PRM', 'SC_vel', 3), 0.0)
+    sc_height = _safe_float(grep_value(ref + '.PRM', 'SC_height', 3), 0.0)
+    earth_radius = _safe_float(grep_value(ref + '.PRM', 'earth_radius', 3), 0.0)
+
+    dr_ground_m = 1.556 * 299792458.0 / (2.0 * rng_samp_rate) if rng_samp_rate > 0 else 10.0
+    gv = sc_vel
+    if sc_vel > 0 and sc_height > 0 and earth_radius > 0:
+        gv = sc_vel / math.sqrt(1.0 + sc_height / earth_radius)
+    da_ground_m = gv / prf if prf > 0 and gv > 0 else 10.0
+
+    try:
+        dec_int = max(1, int(float(dec)))
+    except Exception:
+        dec_int = 1
+
+    if range_dec == -999 or azimuth_dec == -999:
+        target = max(dr_ground_m, da_ground_m)
+        range_dec_eff = max(1, int(round(target / dr_ground_m))) * dec_int
+        azimuth_dec_eff = max(1, int(round(target / da_ground_m))) * dec_int
+        multilook_mode_eff = 'auto'
+        multilook_source = 'auto(prm_approx)'
+    else:
+        range_dec_eff = max(1, int(float(range_dec)))
+        azimuth_dec_eff = max(1, int(float(azimuth_dec)))
+        multilook_mode_eff = 'manual'
+        multilook_source = 'config_or_cli'
+
+    force_rgaz_eff = 1 if multilook_mode_eff == 'manual' else 0
+    if int(force_rgaz) == 1 and multilook_mode_eff != 'manual':
+        print('P2P 4: force_rgaz=1 ignored for auto mode')
+
+    # Keep auto/manual-safe defaults unless explicit strict manual forcing is requested.
+    if force_rgaz_eff != 1:
+        az_lks = 1 if prf < 1000 else 4
+        if rng_samp_rate > 110000000:
+            dec_rng = 4
+        elif rng_samp_rate > 20000000:
+            dec_rng = 2
+        else:
+            dec_rng = 1
+        if azimuth_dec_eff % 2 != 0:
+            az_lks = 1
+        if range_dec_eff % 2 != 0:
+            dec_rng = 1
+        if azimuth_dec_eff < az_lks:
+            azimuth_dec_eff = az_lks
+        if range_dec_eff < dec_rng:
+            range_dec_eff = dec_rng
+        if az_lks > 1 and azimuth_dec_eff % az_lks != 0:
+            azimuth_dec_eff = ((azimuth_dec_eff + az_lks - 1) // az_lks) * az_lks
+        if dec_rng > 1 and range_dec_eff % dec_rng != 0:
+            range_dec_eff = ((range_dec_eff + dec_rng - 1) // dec_rng) * dec_rng
+
+    geo_pix_m = max(dr_ground_m * range_dec_eff, da_ground_m * azimuth_dec_eff)
+
+    with open('multilook.meta', 'w', encoding='utf-8') as f:
+        f.write(f'multilook_mode = {multilook_mode_eff}\n')
+        f.write(f'multilook_source = {multilook_source}\n')
+        f.write(f'range_dec_eff = {range_dec_eff}\n')
+        f.write(f'azimuth_dec_eff = {azimuth_dec_eff}\n')
+        f.write(f'force_rgaz = {int(force_rgaz)}\n')
+        f.write(f'force_rgaz_eff = {int(force_rgaz_eff)}\n')
+        f.write(f'dr_ground_m = {dr_ground_m:.6f}\n')
+        f.write(f'da_ground_m = {da_ground_m:.6f}\n')
+        f.write(f'geo_pix_m = {geo_pix_m:.3f}\n')
+    print('P2P 4: multilook resolved -> mode=', multilook_mode_eff, 'source=', multilook_source,
+          'range_dec=', range_dec_eff, 'azimuth_dec=', azimuth_dec_eff, 'geo_pix_m=', round(geo_pix_m, 3), 'm')
     
     if topo_phase == 1:
         if shift_topo == 1:
             run('ln -s ../../topo/topo_shift.grd .')
             run('intf ' + ref + '.PRM ' + rep + '.PRM -topo topo_shift.grd')
-            runFilter(ref, rep, filter, dec, range_dec, azimuth_dec, compute_phase_gradient)
+            runFilter(ref, rep, filter, dec, range_dec_eff, azimuth_dec_eff, compute_phase_gradient, force_rgaz_eff)
         else:
             run('ln -s ../../topo/topo_ra.grd .')
             run('intf ' + ref + '.PRM ' + rep + '.PRM -topo topo_ra.grd')
-            runFilter(ref, rep, filter, dec, range_dec, azimuth_dec, compute_phase_gradient)
+            runFilter(ref, rep, filter, dec, range_dec_eff, azimuth_dec_eff, compute_phase_gradient, force_rgaz_eff)
     else:
         print('P2P 4: NO TOPOGRAPHIC PHASE REMOVAL PORFORMED')
         run('intf '+ref+'.PRM '+rep+'.PRM')
-        runFilter(ref, rep, filter, dec, range_dec, azimuth_dec, compute_phase_gradient)
+        runFilter(ref, rep, filter, dec, range_dec_eff, azimuth_dec_eff, compute_phase_gradient, force_rgaz_eff)
         
     os.chdir('../..')
     
@@ -593,8 +670,8 @@ def P2P4MakeFilterInterferograms(ref, rep, topo_phase, shift_topo, range_dec, az
         directories = ['intf_o', 'intf_h', 'intf_l', 'iono_correction']
         for directory in directories:
             os.makedirs(directory, exist_ok=True)
-        new_incx = int(range_dec) * int(iono_dsamp)
-        new_incy = int(azimuth_dec) * int(iono_dsamp)
+        new_incx = int(range_dec_eff) * int(iono_dsamp)
+        new_incy = int(azimuth_dec_eff) * int(iono_dsamp)
         os.chdir('intf_h')
         files = glob.glob('../../SLC_H/*.SLC')
         for file in files:
@@ -616,16 +693,16 @@ def P2P4MakeFilterInterferograms(ref, rep, topo_phase, shift_topo, range_dec, az
             if (shift_topo == 1):
                 file_shuttle('../../topo/topo_shift.grd', '.', 'link')
                 run('intf '+ref+'.PRM '+rep+'.PRM -topo topo_shift.grd')
-                run('filter '+ref+'.PRM '+rep+'.PRM 500 '+dec+' '+new_incx+' '+new_incy)
+                run('filter '+ref+'.PRM '+rep+'.PRM 500 '+dec+' '+new_incx+' '+new_incy+' 0 '+str(force_rgaz_eff))
             else:
                 file_shuttle('../../topo/topo_ra.grd', '.', 'link')
             
                 run('intf '+ref+'.PRM '+rep+'.PRM -topo topo_ra.grd')
-                run('filter '+ref+'.PRM '+rep+'.PRM 500 '+dec+' '+new_incx+' '+new_incy)
+                run('filter '+ref+'.PRM '+rep+'.PRM 500 '+dec+' '+new_incx+' '+new_incy+' 0 '+str(force_rgaz_eff))
         else:
             print('NO TOPOGRAPHIC PHASE REMOVAL PORFORMED')
             run('intf '+ref+'.PRM '+rep+'.PRM')
-            run('filter '+ref+'.PRM '+rep+'.PRM 500 '+dec+' '+new_incx+' '+new_incy)
+            run('filter '+ref+'.PRM '+rep+'.PRM 500 '+dec+' '+new_incx+' '+new_incy+' 0 '+str(force_rgaz_eff))
         
         file_shuttle('phase.grd', 'phasefilt.grd', 'cp')
         
@@ -665,7 +742,7 @@ def P2P4MakeFilterInterferograms(ref, rep, topo_phase, shift_topo, range_dec, az
                 cmd = 'intf '+ref+'.PRM '+rep+'.PRM -topo topo_shift.grd'
                 run(cmd)
                 
-                cmd = 'filter '+ref+'.PRM '+rep+'.PRM 500 '+dec+' '+new_incx+' '+new_incy
+                cmd = 'filter '+ref+'.PRM '+rep+'.PRM 500 '+dec+' '+new_incx+' '+new_incy+' 0 '+str(force_rgaz_eff)
                 run(cmd)
             
             else:
@@ -674,7 +751,7 @@ def P2P4MakeFilterInterferograms(ref, rep, topo_phase, shift_topo, range_dec, az
                 cmd = 'intf '+ref+'.PRM '+rep+'.PRM -topo topo_ra.grd'
                 run(cmd)
                 
-                cmd = 'filter '+ref+'.PRM '+rep+'.PRM 500 '+dec+' '+new_incx+' '+new_incy
+                cmd = 'filter '+ref+'.PRM '+rep+'.PRM 500 '+dec+' '+new_incx+' '+new_incy+' 0 '+str(force_rgaz_eff)
                 run(cmd)
             #endif (shift_topo == 1)
         
@@ -684,7 +761,7 @@ def P2P4MakeFilterInterferograms(ref, rep, topo_phase, shift_topo, range_dec, az
             cmd = 'intf '+ref+'.PRM '+rep+'.PRM'
             run(cmd)
             
-            cmd = 'filter '+ref+'.PRM '+rep+'.PRM 500 '+dec+' '+new_incx+' '+new_incy
+            cmd = 'filter '+ref+'.PRM '+rep+'.PRM 500 '+dec+' '+new_incx+' '+new_incy+' 0 '+str(force_rgaz_eff)
             run(cmd)
         #endif (topo_phase == 1)
         
@@ -724,7 +801,7 @@ def P2P4MakeFilterInterferograms(ref, rep, topo_phase, shift_topo, range_dec, az
                 cmd = 'intf '+ref+'.PRM '+rep+'.PRM -topo topo_shift.grd'
                 run(cmd)
                 
-                cmd = 'filter '+ref+'.PRM '+rep+'.PRM 500 '+dec+' '+new_incx+' '+new_incy
+                cmd = 'filter '+ref+'.PRM '+rep+'.PRM 500 '+dec+' '+new_incx+' '+new_incy+' 0 '+str(force_rgaz_eff)
                 run(cmd)
             
             else:
@@ -733,7 +810,7 @@ def P2P4MakeFilterInterferograms(ref, rep, topo_phase, shift_topo, range_dec, az
                 cmd = 'intf '+ref+'.PRM '+rep+'.PRM -topo topo_ra.grd'
                 run(cmd)
                 
-                cmd = 'filter '+ref+'.PRM '+rep+'.PRM 500 '+dec+' '+new_incx+' '+new_incy
+                cmd = 'filter '+ref+'.PRM '+rep+'.PRM 500 '+dec+' '+new_incx+' '+new_incy+' 0 '+str(force_rgaz_eff)
                 run(cmd)
             #endif (shift_topo == 1)
         
@@ -743,7 +820,7 @@ def P2P4MakeFilterInterferograms(ref, rep, topo_phase, shift_topo, range_dec, az
             cmd = 'intf '+ref+'.PRM '+rep+'.PRM'
             run(cmd)
             
-            cmd = 'filter '+ref+'.PRM '+rep+'.PRM 500 '+dec+' '+new_incx+' '+new_incy
+            cmd = 'filter '+ref+'.PRM '+rep+'.PRM 500 '+dec+' '+new_incx+' '+new_incy+' 0 '+str(force_rgaz_eff)
             run(cmd)
         #endif (topo_phase == 1)
         
@@ -776,11 +853,11 @@ def P2P4MakeFilterInterferograms(ref, rep, topo_phase, shift_topo, range_dec, az
         os.chdir('../../')
     print('INTF.CSH, FILTER.CSH - END')
 
-def runFilter(ref, rep, filter, dec, range_dec, azimuth_dec, compute_phase_gradient):
+def runFilter(ref, rep, filter, dec, range_dec, azimuth_dec, compute_phase_gradient, force_rgaz):
     if range_dec == -999 and azimuth_dec == -999:
         run('filter '+ref+'.PRM '+rep+'.PRM '+str(filter)+' '+str(dec)+' '+str(compute_phase_gradient))
     else:
-        run('filter '+ref+'.PRM '+rep+'.PRM '+str(filter)+' '+str(dec)+' '+str(range_dec)+' '+str(azimuth_dec)+' '+str(compute_phase_gradient))
+        run('filter '+ref+'.PRM '+rep+'.PRM '+str(filter)+' '+str(dec)+' '+str(range_dec)+' '+str(azimuth_dec)+' '+str(compute_phase_gradient)+' '+str(force_rgaz))
 
 def getIntfSubDirName(ref, rep):
     ref_id = int(float(grep_value("../raw/"+ref+".PRM", "SC_clock_start", 3)))
@@ -981,6 +1058,44 @@ def p2p_processing(debug):
         from config import azimuth_dec 
     else:
         azimuth_dec = -999
+
+    # optional new multilook controls
+    if 'multilook_mode' in dir(config):
+        from config import multilook_mode
+        multilook_mode = str(multilook_mode).lower().strip().strip("'").strip('"')
+    else:
+        multilook_mode = 'auto'
+
+    if 'multilook_rg_az' in dir(config):
+        from config import multilook_rg_az
+        multilook_rg_az = str(multilook_rg_az).strip().strip("'").strip('"')
+    else:
+        multilook_rg_az = ''
+
+    if 'force_rgaz' in dir(config):
+        from config import force_rgaz
+        try:
+            force_rgaz = int(force_rgaz)
+        except Exception:
+            sys.exit('P2P 0: invalid force_rgaz, expected 0 or 1')
+    else:
+        force_rgaz = 0
+    if force_rgaz not in (0, 1):
+        sys.exit('P2P 0: invalid force_rgaz, expected 0 or 1')
+
+    if multilook_mode == 'manual':
+        if multilook_rg_az != '' and ':' in multilook_rg_az:
+            try:
+                rg, az = multilook_rg_az.split(':', 1)
+                range_dec = int(rg)
+                azimuth_dec = int(az)
+            except Exception:
+                sys.exit('P2P 0: invalid multilook_rg_az in config, expected range:azimuth')
+        elif range_dec == -999 or azimuth_dec == -999:
+            sys.exit('P2P 0: multilook_mode=manual but range_dec/azimuth_dec are missing')
+    else:
+        # auto mode: ignore old fixed range/azimuth if both are absent; if present they are treated as legacy manual.
+        pass
         
     if 'SLC_factor' in dir(config):
         from config import SLC_factor 
@@ -992,6 +1107,9 @@ def p2p_processing(debug):
     print('P2P 0: switch_land =',switch_land)
     print('P2P 0: range_dec   =',range_dec)
     print('P2P 0: azimuth_dec =',azimuth_dec)
+    print('P2P 0: multilook_mode =', multilook_mode)
+    print('P2P 0: multilook_rg_az =', multilook_rg_az)
+    print('P2P 0: force_rgaz =', force_rgaz)
     print('P2P 0: SLC_factor  =',SLC_factor)
     print('P2P 0: Finished loading configuration parameters.')
      
@@ -1049,7 +1167,7 @@ def p2p_processing(debug):
     
     if stage <= 4 and skip_4 == 0:    
         P2P4MakeFilterInterferograms(ref, rep, topo_phase, shift_topo, range_dec, azimuth_dec, 
-                                    dec, filter, compute_phase_gradient, iono, iono_dsamp)
+                                    dec, filter, compute_phase_gradient, iono, iono_dsamp, force_rgaz)
     if debug==1:
         input('Press Enter to continue to Phase 5...')
         

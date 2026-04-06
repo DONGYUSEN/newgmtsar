@@ -1,9 +1,10 @@
 #!/bin/csh -f
 # 卫星独立入口统一路由 / Unified satellite entry router.
 
-if ($#argv != 4 && $#argv != 5) then
+if ($#argv < 4 || $#argv > 6) then
   echo ""
-  echo "用法 / Usage: p2p_sat_entry.csh SAT mode master aligned [config]"
+  echo "用法 / Usage: p2p_sat_entry.csh SAT mode master aligned [config] [rg:za]"
+  echo "            : p2p_sat_entry.csh SAT mode master aligned [rg:za]"
   echo ""
   echo "模式 / Mode: strip | tops"
   echo "说明 / Note: mode=strip 用于条带模式, mode=tops 用于 TOPS 模式"
@@ -30,13 +31,17 @@ if ($mode == "tops" && $SAT != "S1_TOPS") then
 endif
 
 if ($mode == "strip") then
-  if ($#argv == 5) then
+  if ($#argv == 6) then
+    csh -f $script_dir/p2p_mode_strip.csh $SAT $master $aligned $5 $6
+  else if ($#argv == 5) then
     csh -f $script_dir/p2p_mode_strip.csh $SAT $master $aligned $5
   else
     csh -f $script_dir/p2p_mode_strip.csh $SAT $master $aligned
   endif
 else if ($mode == "tops") then
-  if ($#argv == 5) then
+  if ($#argv == 6) then
+    csh -f $script_dir/p2p_mode_tops.csh $SAT $master $aligned $5 $6
+  else if ($#argv == 5) then
     csh -f $script_dir/p2p_mode_tops.csh $SAT $master $aligned $5
   else
     csh -f $script_dir/p2p_mode_tops.csh $SAT $master $aligned

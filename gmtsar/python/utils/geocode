@@ -120,34 +120,48 @@ def geocode():
     print('GEOCODE: now reproject the phase to lon/lat space ... ...')
     print('GEOCODE: geocode ... ...')
     print('GEOCODE: project correlation, phase, unwrapped and amplitude back to lon lat coordinates ... ...')
+
+    proj_arg = ''
+    if check_file_report('multilook.meta') == True:
+        try:
+            with open('multilook.meta', 'r', encoding='utf-8') as f:
+                for line in f:
+                    if line.strip().startswith('geo_pix_m'):
+                        geo_pix_m = line.split('=', 1)[1].strip()
+                        if geo_pix_m != '':
+                            proj_arg = ' pix_m=' + str(float(geo_pix_m))
+                            print('GEOCODE: using square geocode pixel from multilook.meta =', geo_pix_m, 'm')
+                        break
+        except Exception:
+            proj_arg = ''
     
     remarked = ''
-    run('proj_ra2ll trans.dat corr.grd corr_ll.grd')
+    run('proj_ra2ll trans.dat corr.grd corr_ll.grd' + proj_arg)
     run('''gmt grdedit -D//"dimensionless"/1///"$PWD:t geocoded correlation"/"$remarked"  corr_ll.grd''')
 
-    run('proj_ra2ll trans.dat phasefilt.grd   phasefilt_ll.grd')
+    run('proj_ra2ll trans.dat phasefilt.grd   phasefilt_ll.grd' + proj_arg)
     run('''gmt grdedit -D//"radians"/1///"$PWD:t wrapped phase after filtering"/"$remarked"  phasefilt_ll.grd''')
-    run('proj_ra2ll trans.dat phase_mask.grd  phase_mask_ll.grd')
+    run('proj_ra2ll trans.dat phase_mask.grd  phase_mask_ll.grd' + proj_arg)
     run('''gmt grdedit -D//"radians"/1///"$PWD:t wrapped phase after masking"/"$remarked"  phase_mask_ll.grd''')
-    run('proj_ra2ll trans.dat display_amp.grd display_amp_ll.grd')
+    run('proj_ra2ll trans.dat display_amp.grd display_amp_ll.grd' + proj_arg)
     run('''gmt grdedit -D//"dimensionless"/1///"PWD:t amplitude"/"$remarked"  display_amp_ll.grd''')
     
     if check_file_report('xphase_mask.grd')==True:
-        run('proj_ra2ll trans.dat xphase_mask.grd xphase_mask_ll.grd')
+        run('proj_ra2ll trans.dat xphase_mask.grd xphase_mask_ll.grd' + proj_arg)
         run('''gmt grdedit -D//"radians"/1///"$PWD:t xphase"/"$remarked"  xphase_mask_ll.grd''')
-        run('proj_ra2ll trans.dat yphase_mask.grd yphase_mask_ll.grd')
+        run('proj_ra2ll trans.dat yphase_mask.grd yphase_mask_ll.grd' + proj_arg)
         run('''gmt grdedit -D//"radians"/1///"$PWD:t yphase"/"$remarked"  yphase_mask_ll.grd''')
         
     if check_file_report('unwrap_mask.grd')==True:
-        run('proj_ra2ll trans.dat unwrap_mask.grd unwrap_mask_ll.grd')
+        run('proj_ra2ll trans.dat unwrap_mask.grd unwrap_mask_ll.grd' + proj_arg)
         run('''gmt grdedit -D//"radians"/1///"PWD:t unwrapped, masked phase"/"$remarked"  unwrap_mask_ll.grd''')
 
     if check_file_report('unwrap.grd')==True:
-        run('proj_ra2ll trans.dat unwrap.grd unwrap_ll.grd')
+        run('proj_ra2ll trans.dat unwrap.grd unwrap_ll.grd' + proj_arg)
         run('''gmt grdedit -D//"radians"/1///"PWD:t unwrapped phase"/"$remarked"  unwrap_ll.grd''')
 
     if check_file_report('phasefilt_mask.grd')==True:
-        run('proj_ra2ll trans.dat phasefilt_mask.grd phasefilt_mask_ll.grd')
+        run('proj_ra2ll trans.dat phasefilt_mask.grd phasefilt_mask_ll.grd' + proj_arg)
         run('''gmt grdedit -D//"phase in radians"/1///"PWD:t wrapped phase masked filtered"/"$remarked"   phasefilt_mask_ll.grd''')
 
     print(' ')
@@ -183,4 +197,3 @@ def _main_func(description):
 
 if __name__ == "__main__":
     _main_func(__doc__)
-

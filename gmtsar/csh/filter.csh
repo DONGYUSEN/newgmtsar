@@ -22,10 +22,10 @@
   gmt set COLOR_MODEL = hsv
   gmt set PROJ_LENGTH_UNIT = inch
 
-  if ($#argv < 4 || $#argv > 7) then
+  if ($#argv < 4 || $#argv > 8) then
 errormessage:
     echo ""
-    echo "Usage: filter.csh master.PRM aligned.PRM filter decimation [rng_dec azi_dec] [compute_phase_gradient]"
+    echo "Usage: filter.csh master.PRM aligned.PRM filter decimation [rng_dec azi_dec] [compute_phase_gradient] [force_rgaz]"
     echo ""
     echo " Apply gaussian filter to amplitude and phase images."
     echo " "
@@ -50,8 +50,6 @@ errormessage:
   if( $PRF < 1000 ) then
      set az_lks = 1
   endif
-  set SC = `grep SC_identity $1 | awk '{print $3}'`
-  
   set master  = `echo $1 | sed 's/\.PRM$//'`
   set aligned = `echo $2 | sed 's/\.PRM$//'`
 #
@@ -62,12 +60,7 @@ errormessage:
 # set the range spacing in units of image range pixel size
 #
   if ($?rng_samp_rate) then
-    if($SC == 14) then
-      set dec_rng = 1
-      set dec = 2
-      set az_lks = 2
-      set filter1 = $sharedir/filters/gauss5x5
-    else if ($rng_samp_rate > 110000000) then
+    if ($rng_samp_rate > 110000000) then
       set dec_rng = 4
       set filter1 = $sharedir/filters/gauss15x5
     else if ($rng_samp_rate < 110000000 && $rng_samp_rate > 20000000 ) then
@@ -91,16 +84,26 @@ errormessage:
 # determine whether to run phase gradient
 #
   set compute_phase_gradient = 0
+  set force_rgaz = 0
   if($#argv == 5) then
     set compute_phase_gradient = $5
   endif
   if($#argv == 7) then
     set compute_phase_gradient = $7
   endif
+  if($#argv == 8) then
+    set compute_phase_gradient = $7
+    set force_rgaz = $8
+  endif
+  set force_ok = `echo $force_rgaz | awk '{if($1==0 || $1==1) print 1; else print 0}'`
+  if ($force_ok != 1) then
+    echo "Invalid force_rgaz=$force_rgaz, must be 0 or 1."
+    exit 1
+  endif
 #
 # set az_lks and dec_rng to 1 for odd decimation
 #
-  if($#argv == 6 || $#argv == 7) then
+  if($#argv == 6 || $#argv == 7 || $#argv == 8) then
     set jud = `echo $6 | awk '{if($1%2 == 0) print 1;else print 0}'`
     if ($jud == 0) then 
       set az_lks = 1
@@ -118,21 +121,27 @@ errormessage:
   set filter2 = gauss_$3
   set idec = `cat ijdec | awk -v dc="$dec" '{ print dc*$1 }'`
   set jdec = `cat ijdec | awk -v dc="$dec" '{ print dc*$2 }'`
-  if($#argv == 6 || $#argv == 7) then
-    set idec = `echo $6 $az_lks | awk '{printf("%d",$1/$2)}'`
-    set jdec = `echo $5 $dec_rng | awk '{printf("%d",$1/$2)}'`
-    echo "setting range_dec = $5, azimuth_dec = $6"
+  if($#argv == 6 || $#argv == 7 || $#argv == 8) then
+    if ($force_rgaz == 1) then
+      set az_lks = 1
+      set dec_rng = 1
+      set filter1 = $sharedir/filters/gauss15x3
+      set idec = `echo $6 | awk '{printf("%d",$1)}'`
+      set jdec = `echo $5 | awk '{printf("%d",$1)}'`
+      echo "setting range_dec = $5, azimuth_dec = $6 (force_rgaz=1)"
+    else
+      set idec = `echo $6 $az_lks | awk '{printf("%d",$1/$2)}'`
+      set jdec = `echo $5 $dec_rng | awk '{printf("%d",$1/$2)}'`
+      echo "setting range_dec = $5, azimuth_dec = $6"
+    endif
+  endif
+  set valid_ij = `echo $idec $jdec | awk '{if($1>=1 && $2>=1) print 1; else print 0}'`
+  if ($valid_ij != 1) then
+    echo "idec and jdec should be positive integers. (idec=$idec jdec=$jdec)"
+    exit 1
   endif
   #echo "$filter2 $idec $jdec ($az_lks $dec_rng)" 
 
-
-# by ysdong@cug to improve the resolution of DJ1
-    if($SC == 14) then
-      set dec_rng = 1
-      set az_lks = 1
-      set idec = 2
-      set jdec = 2
-    endif
 
     echo "Refine: $filter2,  dec_rng = $dec_rng, az_lks = $az_lks, idec = $idec, jdec = $jdec." 
 #

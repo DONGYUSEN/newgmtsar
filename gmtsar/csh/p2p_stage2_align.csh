@@ -126,43 +126,64 @@ if ($skip_master == 0 || $skip_master == 1) then
     fitoffset.csh 3 3 freq_xcorr.dat 40 >> $aligned.PRM
   else if ($SAT == "LT1") then
     echo "             ..配准 LT1(多尺度配准技术)            "
-    echo "大窗口，粗配准，2048*2048, 获得总体的偏差：  "
-    xcorr $master.PRM $aligned.PRM -nx 4 -ny 4 -nointerp -noshift -xsearch 2048 -ysearch 2048
-    #filter_offset.csh freq_xcorr.dat  output.txt
-    #mv output.txt freq_xcorr.dat
-    #fitoffset.csh 1 1 freq_xcorr.dat
-    fitoffset.csh 1 1 freq_xcorr.dat >> $aligned.PRM
-    update_PRM $aligned.PRM SC_identity 12
+    # LT1 often has PRF/DC mismatch between acquisitions.
+    # Normalize parameters before coarse correlation to stabilize offsets.
+    set prf_m = `grep PRF $master.PRM | awk 'NR==1{print $3}'`
+    set prf_s = `grep PRF $aligned.PRM | awk 'NR==1{print $3}'`
+    if ("x$prf_m" == "x" || "x$prf_s" == "x") then
+      echo "错误：无法读取 LT1 PRF 参数 / ERROR: failed to read LT1 PRF"
+      exit 1
+    endif
+    set prf_diff_pct = `echo "$prf_m $prf_s" | awk '{m=$1+0;s=$2+0; if(m==0){print 0}else{d=s-m;if(d<0)d=-d; printf("%.4f",100.0*d/m)}}'`
+    set prf_need_norm = `echo "$prf_m $prf_s" | awk '{m=$1+0;s=$2+0; if(m==0){print 0}else{d=s-m;if(d<0)d=-d; if(d/m>0.0005) print 1; else print 0}}'`
+    echo "LT1 PRF check: master=$prf_m aligned=$prf_s diff=${prf_diff_pct}%"
+    if ($prf_need_norm == 1) then
+      echo "LT1 PRF normalization: resample aligned SLC to master PRF=$prf_m"
+      samp_slc.csh $aligned $prf_m 0
+      if ($status != 0) then
+        echo "错误：LT1 PRF 归一化失败 / ERROR: LT1 PRF normalization failed"
+        exit 1
+      endif
+    endif
+
+    set fd1_m = `grep fd1 $master.PRM | awk 'NR==1{print $3}'`
+    set fd1_s = `grep fd1 $aligned.PRM | awk 'NR==1{print $3}'`
+    set fdd1_m = `grep fdd1 $master.PRM | awk 'NR==1{print $3}'`
+    set fdd1_s = `grep fdd1 $aligned.PRM | awk 'NR==1{print $3}'`
+    set fddd1_m = `grep fddd1 $master.PRM | awk 'NR==1{print $3}'`
+    set fddd1_s = `grep fddd1 $aligned.PRM | awk 'NR==1{print $3}'`
+    if ("x$fd1_m" == "x") set fd1_m = 0
+    if ("x$fd1_s" == "x") set fd1_s = 0
+    if ("x$fdd1_m" == "x") set fdd1_m = 0
+    if ("x$fdd1_s" == "x") set fdd1_s = 0
+    if ("x$fddd1_m" == "x") set fddd1_m = 0
+    if ("x$fddd1_s" == "x") set fddd1_s = 0
+    set fd1_ref = $fd1_m
+    set fdd1_ref = $fdd1_m
+    set fddd1_ref = $fddd1_m
+    update_PRM $aligned.PRM fd1 $fd1_ref
+    update_PRM $aligned.PRM fdd1 $fdd1_ref
+    update_PRM $aligned.PRM fddd1 $fddd1_ref
+    set dc_diff = `echo "$fd1_m $fd1_s $fdd1_m $fdd1_s $fddd1_m $fddd1_s" | awk '{d1=$2-$1; if(d1<0)d1=-d1; d2=$4-$3; if(d2<0)d2=-d2; d3=$6-$5; if(d3<0)d3=-d3; printf("d_fd1=%.6f d_fdd1=%.6f d_fddd1=%.6f",d1,d2,d3)}'`
+    echo "LT1 DC normalization: slave -> master (fd1=$fd1_ref fdd1=$fdd1_ref fddd1=$fddd1_ref), $dc_diff"
+
+    echo "     大窗口，粗配准，2048*2048, 获得总体的偏差：  "
+    xcorr2 $master.PRM $aligned.PRM -nx 30 -ny 30 -noshift -xsearch 512 -ysearch 512
+    if ($status != 0) then
+      echo "错误：LT1 粗配准 xcorr 失败 / ERROR: LT1 coarse xcorr failed"
+      exit 1
+    endif
+    fitoffset.csh 2 2 freq_xcorr.dat 
+    fitoffset.csh 2 2 freq_xcorr.dat 20 >> $aligned.PRM
+    update_PRM $aligned.PRM SC_identity 12        
   else
     xcorr2 $master.PRM $aligned.PRM -noshift -xsearch 128 -ysearch 128 -nx 20 -ny 50
     fitoffset.csh 2 2  freq_xcorr.dat 18 >> $aligned.PRM
   endif
   echo "                     ..重采样    "
 
-  if ($SAT == "LT1") then
-    #resamp $master.PRM $aligned.PRM $aligned.PRMresamp $aligned.SLCresamp 4
-    #rm $aligned.SLC
-    #mv $aligned.SLCresamp $aligned.SLC
-    #cp $aligned.PRMresamp $aligned.PRM
-    echo "Loop 2"
-    xcorr2 $master.PRM $aligned.PRM -nx 60 -ny 60  -xsearch 256 -ysearch 256 
-    filter_offset.csh freq_xcorr.dat  output.txt
-    mv output.txt freq_xcorr.dat
-    fitoffset.csh 2 2 freq_xcorr.dat
-    fitoffset.csh 2 2 freq_xcorr.dat 40 >> $aligned.PRM
-    resamp $master.PRM $aligned.PRM $aligned.PRMresamp $aligned.SLCresamp 4
-    #rm $aligned.SLC
-    #mv $aligned.SLCresamp $aligned.SLC
-    #cp $aligned.PRMresamp $aligned.PRM
-
-    echo "Final check!  "
-    #xcorr2 $master.PRM $aligned.PRM -nx 1200 -ny 1  -xsearch 128 -ysearch 256
-
-    # keep original behavior: LT1 branch exits early in current implementation
-    #exit 20
-  else
-    resamp $master.PRM $aligned.PRM $aligned.PRMresamp $aligned.SLCresamp 4
-  endif
+  resamp $master.PRM $aligned.PRM $aligned.PRMresamp $aligned.SLCresamp 4
+  
   rm $aligned.SLC
   mv $aligned.SLCresamp $aligned.SLC
   cp $aligned.PRMresamp $aligned.PRM

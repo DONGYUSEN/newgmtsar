@@ -578,7 +578,48 @@ echo $commandline
       ## only for test 2025.12.25
       update_PRM $master.PRM SC_identity 14
       update_PRM $aligned.PRM SC_identity 14
-      
+    else if ($SAT == "LT1") then
+      echo "LT1 多普勒信息：从 XML combinedDoppler 读取系数 / LT1 Doppler: read combinedDoppler coefficients from XML"
+
+      if ($skip_master == 0 || $skip_master == 2) then
+        set m_dc = (`awk 'BEGIN{in_cd=0;n=0} /<combinedDoppler>/{in_cd=1;next} /<\/combinedDoppler>/{if(in_cd==1) exit} in_cd==1 && /<coefficient exponent=/{s=$0; sub(/^[^>]*>/,"",s); sub(/<.*/,"",s); print s; n++; if(n>=3) exit}' $master.xml`)
+        if ($#m_dc >= 3) then
+          set m_fd1 = $m_dc[1]
+          set m_fdd1 = $m_dc[2]
+          set m_fddd1 = $m_dc[3]
+        else
+          set m_fd1 = `sed -n 's:.*<dopplerAtMidRange>\(.*\)</dopplerAtMidRange>.*:\1:p' $master.xml | head -n 1`
+          if ("x$m_fd1" == "x") set m_fd1 = 0
+          set m_fdd1 = 0
+          set m_fddd1 = 0
+          echo "警告：master XML 未找到 combinedDoppler 三项系数，回退 dopplerAtMidRange / WARNING: missing combinedDoppler(3 coeffs), fallback to dopplerAtMidRange"
+        endif
+        update_PRM $master.PRM fd1 $m_fd1
+        update_PRM $master.PRM fdd1 $m_fdd1
+        update_PRM $master.PRM fddd1 $m_fddd1
+        update_PRM $master.PRM SC_identity 12
+        echo "LT1 master Doppler: fd1=$m_fd1 fdd1=$m_fdd1 fddd1=$m_fddd1"
+      endif
+
+      if ($skip_master == 0 || $skip_master == 1) then
+        set s_dc = (`awk 'BEGIN{in_cd=0;n=0} /<combinedDoppler>/{in_cd=1;next} /<\/combinedDoppler>/{if(in_cd==1) exit} in_cd==1 && /<coefficient exponent=/{s=$0; sub(/^[^>]*>/,"",s); sub(/<.*/,"",s); print s; n++; if(n>=3) exit}' $aligned.xml`)
+        if ($#s_dc >= 3) then
+          set s_fd1 = $s_dc[1]
+          set s_fdd1 = $s_dc[2]
+          set s_fddd1 = $s_dc[3]
+        else
+          set s_fd1 = `sed -n 's:.*<dopplerAtMidRange>\(.*\)</dopplerAtMidRange>.*:\1:p' $aligned.xml | head -n 1`
+          if ("x$s_fd1" == "x") set s_fd1 = 0
+          set s_fdd1 = 0
+          set s_fddd1 = 0
+          echo "警告：aligned XML 未找到 combinedDoppler 三项系数，回退 dopplerAtMidRange / WARNING: missing combinedDoppler(3 coeffs), fallback to dopplerAtMidRange"
+        endif
+        update_PRM $aligned.PRM fd1 $s_fd1
+        update_PRM $aligned.PRM fdd1 $s_fdd1
+        update_PRM $aligned.PRM fddd1 $s_fddd1
+        update_PRM $aligned.PRM SC_identity 12
+        echo "LT1 aligned Doppler: fd1=$s_fd1 fdd1=$s_fdd1 fddd1=$s_fddd1"
+      endif
     endif
     
     echo ""

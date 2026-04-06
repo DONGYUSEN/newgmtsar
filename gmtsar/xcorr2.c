@@ -102,9 +102,15 @@ static unsigned long long estimate_worker_peak_memory_bytes(const struct st_xcor
 static long auto_tune_threads(const struct st_xcorr *xc, long cpu_target_threads) {
     unsigned long long avail_bytes, worker_peak, usable_bytes;
     unsigned long long queued_window_bytes, per_thread_effective;
+    unsigned long long relaxed_needed;
     double window_scale, safety_factor;
     long by_memory;
     long tuned;
+    const long large_window_min_threads = 4;
+    const long double memory_budget_ratio = 0.80L;  // allow xcorr2 to use up to 80% of available memory
+    const double safety_floor = 1.15;
+    const double safety_slope = 0.25;
+    const double safety_cap = 2.20;
 
     tuned = cpu_target_threads;
     if (tuned < 1) tuned = 1;
@@ -118,19 +124,39 @@ static long auto_tune_threads(const struct st_xcorr *xc, long cpu_target_threads
         (unsigned long long)(xc->ysearch * 4ULL) * sizeof(complex double);
 
     // Dynamic safety factor:
-    // keep a margin for FFTW/allocator overhead while avoiding excessive throttling.
+    // keep margin for FFTW/allocator overhead, but cap it to avoid over-throttling
+    // on large windows (e.g. 2048x2048).
     window_scale = ((double)xc->xsearch * (double)xc->ysearch) / (256.0 * 256.0);
     if (window_scale < 1.0) window_scale = 1.0;
-    safety_factor = 1.4 + 0.6 * sqrt(window_scale);
+    safety_factor = safety_floor + safety_slope * sqrt(window_scale);
+    if (safety_factor > safety_cap)
+        safety_factor = safety_cap;
 
     per_thread_effective =
         (unsigned long long)((long double)worker_peak * safety_factor) + queued_window_bytes;
     if (avail_bytes == 0 || per_thread_effective == 0)
         return tuned;
 
-    // keep some free headroom for OS/page cache and neighboring processes.
-    usable_bytes = (unsigned long long)((long double)avail_bytes * 0.85L);
+    // Keep some free headroom for OS/page cache and neighboring processes.
+    // Budget is configurable in code at 80% of currently available memory.
+    usable_bytes = (unsigned long long)((long double)avail_bytes * memory_budget_ratio);
     by_memory = (long)(usable_bytes / per_thread_effective);
+
+    // For very large windows (2048x2048), the dynamic safety term can still be conservative.
+    // If memory budget is sufficient for 4 workers under a relaxed model, keep at least 4.
+    if (xc->xsearch >= 2048 && xc->ysearch >= 2048 && tuned >= large_window_min_threads) {
+        relaxed_needed = worker_peak * (unsigned long long)large_window_min_threads + queued_window_bytes;
+        if (by_memory < large_window_min_threads && usable_bytes >= relaxed_needed) {
+            fprintf(stderr,
+                    "Large-window override: promote memory cap %ld -> %ld "
+                    "(usable %.2f GB, relaxed need %.2f GB).\n",
+                    by_memory, large_window_min_threads,
+                    usable_bytes / (1024.0 * 1024.0 * 1024.0),
+                    relaxed_needed / (1024.0 * 1024.0 * 1024.0));
+            by_memory = large_window_min_threads;
+        }
+    }
+
     if (by_memory < 1) {
         fprintf(stderr,
                 "Estimated memory is insufficient for one worker (need about %.2f GB per worker). "
@@ -140,9 +166,11 @@ static long auto_tune_threads(const struct st_xcorr *xc, long cpu_target_threads
     }
 
     fprintf(stderr,
-            "Auto thread caps: cpu=%ld, memory=%ld (avail %.2f GB, est %.2f GB/thread, safety %.2f)\n",
+            "Auto thread caps: cpu=%ld, memory=%ld (avail %.2f GB, budget %.0f%% => %.2f GB, est %.2f GB/thread, safety %.2f)\n",
             tuned, by_memory,
             avail_bytes / (1024.0 * 1024.0 * 1024.0),
+            (double)(memory_budget_ratio * 100.0L),
+            usable_bytes / (1024.0 * 1024.0 * 1024.0),
             per_thread_effective / (1024.0 * 1024.0 * 1024.0),
             safety_factor);
 
@@ -645,8 +673,8 @@ void do_correlation(struct st_xcorr *xc, long thread_n) {
     pthread_mutex_t fftw_lock;
     guint queue_limit;
 
-    thread_pool = g_thread_pool_new(corr_thread, &fftw_lock, thread_n, TRUE, NULL);
     pthread_mutex_init(&fftw_lock, NULL);
+    thread_pool = g_thread_pool_new(corr_thread, &fftw_lock, thread_n, TRUE, NULL);
     queue_limit = 1U;
 #endif
 

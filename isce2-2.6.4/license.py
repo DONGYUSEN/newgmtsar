@@ -1,1 +1,0 @@
-stanford_license = None

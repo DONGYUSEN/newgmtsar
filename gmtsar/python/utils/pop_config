@@ -179,6 +179,10 @@ def pop_config():
     print( "# decimation control the size of the amplitude and phase images. It is either 1 or 2.")
     print( "# Set the decimation to be 1 if you want higher resolution images.")
     print( "# Set the decimation to be 2 if you want images with smaller file size.")
+    print( "# default uses automatic range/azimuth multilook balancing (multilook_mode=auto)")
+    print( "# set multilook_mode=manual and multilook_rg_az='range:azimuth' to force manual values")
+    print( "# manual mode strictly honors rg:az automatically (including 1:1/2:2)")
+    print( "# force_rgaz is kept only for legacy compatibility and usually not needed")
     print( "# ")
 
     if SAT == "RS2" or SAT == "TSX":
@@ -190,6 +194,9 @@ def pop_config():
     else:
         dec_factor = 2 
         print( "dec_factor = 2 ")
+
+    print("multilook_mode = 'auto'")
+    print("multilook_rg_az = ''")
 
     if SAT == "S1_TOPS":
         range_dec = 8

@@ -162,6 +162,10 @@ echo "# decimation of images "
 echo "# decimation control the size of the amplitude and phase images. It is either 1 or 2."
 echo "# Set the decimation to be 1 if you want higher resolution images."
 echo "# Set the decimation to be 2 if you want images with smaller file size."
+echo "# 默认会自动计算 range/azimuth 多视以匹配地面分辨率（multilook_mode=auto）"
+echo "# 如需手动指定，请设置 multilook_mode=manual，并填写 multilook_rg_az=range:azimuth"
+echo "# 进入手动模式后会自动严格按 rg:az 执行（含 1:1/2:2），无需额外设置 force_rgaz"
+echo "# force_rgaz 为兼容旧配置保留，通常不需要填写"
 echo "# "
 if ($SAT == "RS2" || $SAT == "TSX" ) then
   echo "dec_factor = 1 "
@@ -174,10 +178,14 @@ else if ($SAT == "DJ1") then
 else
   echo "dec_factor = 2 "
 endif
+echo "multilook_mode = auto"
+echo "multilook_rg_az = "
 if ($SAT == "S1_TOPS") then
+  echo "# manual preset for S1_TOPS"
   echo "range_dec = 8"
   echo "azimuth_dec = 2"
 else if ($SAT == "ALOS2_SCAN") then
+  echo "# manual preset for ALOS2_SCAN"
   echo "range_dec = 4"
   echo "azimuth_dec = 8"
 endif
