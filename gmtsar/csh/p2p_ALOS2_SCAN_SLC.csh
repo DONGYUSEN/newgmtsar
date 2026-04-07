@@ -343,7 +343,7 @@ unset noclobber
       set rep_id  = `grep SC_clock_start ../SLC/IMG-$rep-$subswath.PRM | awk '{printf("%d",int($3))}' `
       cd $ref_id"_"$rep_id
       if ((! $?region_cut) || ($region_cut == "")) then
-        set region_cut = `gmt grdinfo phase.grd -I- | cut -c3-20`
+        set region_cut = `gmt grdinfo phase.grd -I- | sed 's#^-R##'`
       endif
 
 #

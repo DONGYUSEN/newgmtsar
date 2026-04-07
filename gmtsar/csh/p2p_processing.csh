@@ -1051,7 +1051,7 @@ setenv OMP_NUM_THREADS 10
       cp phase.grd phasefilt.grd
       if ($iono_skip_est == 0) then
         if ($mask_water == 1 || $switch_land == 1) then
-          set rcut = `gmt grdinfo phase.grd -I- | cut -c3-20`
+          set rcut = `gmt grdinfo phase.grd -I- | sed 's#^-R##'`
           cd ../../topo
           landmask.csh $rcut
           cd ../iono_phase/intf_h
@@ -1163,7 +1163,7 @@ setenv OMP_NUM_THREADS 10
 # landmask
 #
       if ($mask_water == 1 || $switch_land == 1) then
-        set r_cut = `gmt grdinfo phase.grd -I- | cut -c3-20`
+        set r_cut = `gmt grdinfo phase.grd -I- | sed 's#^-R##'`
         cd ../../topo
         if (! -f landmask_ra.grd) then
           landmask.csh $r_cut

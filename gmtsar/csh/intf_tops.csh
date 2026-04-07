@@ -197,7 +197,7 @@ if ($stage <= 2) then
     if ($threshold_snaphu != 0 ) then
       if ($mask_water == 1 || $switch_land == 1) then
         #if ($region_cut == "") then
-        set mask_region = `gmt grdinfo phase.grd -I- | cut -c3-20`
+        set mask_region = `gmt grdinfo phase.grd -I- | sed 's#^-R##'`
         #endif
         cd ../../topo
         if (! -f landmask_ra.grd) then

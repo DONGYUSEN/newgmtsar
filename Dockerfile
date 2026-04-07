@@ -65,6 +65,21 @@ RUN autoconf && \
       --with-orbits-dir=/opt/orbits && \
     make -j"$(nproc)" all && \
     make install && \
+    # Pin critical csh scripts from the source tree so fixes are always present in new images.
+    for f in p2p_processing.csh snaphu.csh snaphu_interp.csh landmask.csh \
+             intf_batch.csh intf_batch_ALOS2_SCAN.csh intf_tops.csh \
+             p2p_ALOS2_SCAN_Frame.csh p2p_ALOS2_SCAN_SLC.csh p2p_ENVI.csh p2p_ERS.csh \
+             merge_unwrap_geocode_tops.csh; do \
+      install -m 0755 "gmtsar/csh/$f" "/opt/gmtsar/bin/$f"; \
+    done && \
+    # Build-time sanity checks for the 6.4 landmask/snaphu compatibility fixes.
+    grep -q "sed 's#^-R##'" /opt/gmtsar/bin/p2p_processing.csh && \
+    grep -q "grid mismatch, rebuilding on phase_patch.grd" /opt/gmtsar/bin/snaphu.csh && \
+    grep -q "grid mismatch, rebuilding on phase_patch.grd" /opt/gmtsar/bin/snaphu_interp.csh && \
+    # DJ1 preproc binary is not always installed by top-level targets.
+    # Build/install explicitly so p2p_processing.csh SAT=DJ1 can run.
+    make -C preproc/DJ1_preproc all install && \
+    test -x /opt/gmtsar/bin/make_slc_dj1 && \
     ldconfig
 
 ENV PATH="/opt/gmtsar/bin:${PATH}"

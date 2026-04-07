@@ -234,7 +234,7 @@ if ($stage <= 2) then
     echo "INTF.CSH, FILTER.CSH - END"
 #
     if ($region_cut == "") then
-      set region_cut = `gmt grdinfo phase.grd -I- | cut -c3-20`
+      set region_cut = `gmt grdinfo phase.grd -I- | sed 's#^-R##'`
     endif
     if ($threshold_snaphu != 0 ) then
       if ($mask_water == 1 || $switch_land == 1) then

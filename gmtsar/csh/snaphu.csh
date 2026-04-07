@@ -42,10 +42,29 @@ endif
 # create landmask
 #
 if (-f landmask_ra.grd) then
+  set phase_inc = `gmt grdinfo -C phase_patch.grd | awk '{printf("-I%.12g/%.12g+e",$8,$9)}'`
   if ($#argv == 3 ) then 
-    gmt grdsample landmask_ra.grd -R$3 `gmt grdinfo -I phase_patch.grd` -Glandmask_ra_patch.grd
+    gmt grdsample landmask_ra.grd -R$3 $phase_inc -Glandmask_ra_patch.grd
   else 
-    gmt grdsample landmask_ra.grd -Rphase_patch.grd -Glandmask_ra_patch.grd
+    gmt grdsample landmask_ra.grd -Rphase_patch.grd $phase_inc -Glandmask_ra_patch.grd
+  endif
+  # GMT 6.4 may still shift one row for some pixel-registered grids; rebuild on the phase grid if needed.
+  set nx_phase = `gmt grdinfo -C phase_patch.grd | awk '{print $10}'`
+  set ny_phase = `gmt grdinfo -C phase_patch.grd | awk '{print $11}'`
+  if (-f landmask_ra_patch.grd) then
+    set nx_land  = `gmt grdinfo -C landmask_ra_patch.grd | awk '{print $10}'`
+    set ny_land  = `gmt grdinfo -C landmask_ra_patch.grd | awk '{print $11}'`
+  else
+    set nx_land = 0
+    set ny_land = 0
+  endif
+  if ($nx_phase != $nx_land || $ny_phase != $ny_land) then
+    echo "warning: landmask_ra_patch.grd grid mismatch, rebuilding on phase_patch.grd"
+    gmt grd2xyz phase_patch.grd -bo2f -o0,1 > phase_xy.bin
+    gmt grdtrack phase_xy.bin -Glandmask_ra.grd -nl -bi2f -bo3f > phase_xy_land.bin
+    gmt gmtconvert phase_xy_land.bin -bi3f -bo1f -o2 > landmask_z.bin
+    gmt xyz2grd landmask_z.bin -ZTLf -r `gmt grdinfo -I- phase_patch.grd` `gmt grdinfo -I phase_patch.grd` -Glandmask_ra_patch.grd
+    rm -f phase_xy.bin phase_xy_land.bin landmask_z.bin
   endif
   gmt grdmath phase_patch.grd landmask_ra_patch.grd MUL = phase_patch.grd $V
 endif

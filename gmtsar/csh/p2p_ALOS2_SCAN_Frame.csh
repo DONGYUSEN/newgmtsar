@@ -339,7 +339,7 @@ endif
 
   # Unwrapping
   if ($region_cut == "") then
-    set region_cut = `gmt grdinfo phasefilt.grd -I- | cut -c3-20`
+    set region_cut = `gmt grdinfo phasefilt.grd -I- | sed 's#^-R##'`
   endif
   if ($threshold_snaphu != 0 ) then
     if ($mask_water == 1) then

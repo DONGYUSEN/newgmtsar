@@ -235,7 +235,7 @@ if ($stage <= 2) then
     echo "INTF.CSH, FILTER.CSH - END"
     
     if ($region_cut == "") then
-      set region_cut = `gmt grdinfo phase.grd -I- | cut -c3-20`
+      set region_cut = `gmt grdinfo phase.grd -I- | sed 's#^-R##'`
       set rs = `gmt grdinfo phase.grd -C | awk '{print $2}'`
       set re = `gmt grdinfo phase.grd -C | awk '{print $3-16}'`
       set as = `gmt grdinfo phase.grd -C | awk '{print $4}'`
